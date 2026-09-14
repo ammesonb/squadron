@@ -169,7 +169,7 @@ mcp "slack" {
 }
 ```
 
-These credentials are saved to the encrypted vault at config load time and used automatically by `squadron mcp login`. CLI flags (`--client-id`, `--client-secret`) override the HCL values if both are provided.
+These credentials are loaded into the worker process and used by `squadron mcp login`. CLI flags (`--client-id`, `--client-secret`) override the HCL values if both are provided. Durable user and service-principal authorization will be managed by Command Center's connection-auth model.
 
 ### `squadron mcp login <name>`
 
@@ -180,7 +180,7 @@ Runs the full OAuth 2.1 flow:
 3. Opens your browser to the authorization page
 4. Waits for the redirect on a local loopback server
 5. Exchanges the authorization code (with PKCE) for an access token
-6. Stores the token and refresh token in the encrypted vault
+6. Makes the token and refresh token available to the current worker process
 
 Subsequent runs pick up the token automatically — no login needed until the refresh token itself expires or is revoked.
 
@@ -200,11 +200,11 @@ States: `n/a` (stdio, no auth needed), `static header` (literal Authorization in
 
 ### `squadron mcp logout <name>`
 
-Removes the stored access and refresh tokens from the vault. The cached client registration is preserved so the next `login` skips the registration step.
+Removes the access and refresh tokens from the current worker process.
 
 ### Token lifecycle
 
-Tokens are stored in the encrypted vault alongside your other variables. Squadron automatically refreshes access tokens in the background before they expire — you don't need to re-run `login` unless the authorization itself is revoked in the provider's settings.
+The worker refreshes process-local access tokens in the background before they expire. Durable MCP authorization is intentionally separate from workspace variables and will be owned by Command Center.
 
 ## What's not supported
 

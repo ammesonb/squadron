@@ -13,7 +13,7 @@ import (
 )
 
 var _ = Describe("ForceRefresh", func() {
-	BeforeEach(func() { initTestVault() })
+	BeforeEach(func() { resetRuntimeTokens() })
 
 	It("errors when no token is stored", func() {
 		err := oauth.ForceRefresh(context.Background(), "missing", "https://example.com/mcp")
@@ -22,7 +22,7 @@ var _ = Describe("ForceRefresh", func() {
 	})
 
 	It("errors when the stored token has no refresh token", func() {
-		store := oauth.NewVaultTokenStore("no-refresh")
+		store := oauth.NewRuntimeTokenStore("no-refresh")
 		Expect(store.SaveToken(context.Background(), &transport.Token{
 			AccessToken: "access-only",
 		})).To(Succeed())

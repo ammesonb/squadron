@@ -65,11 +65,11 @@ Or grab a binary from [GitHub Releases](https://github.com/mlund01/squadron/rele
 # Scaffold a starter project
 squadron quickstart
 
-# Set an API key (stored in an encrypted vault)
-squadron vars set anthropic_api_key sk-ant-...
+# Connect this workspace worker to its Command Center
+# (the first interactive run asks for the URL and runner credential)
+squadron engage
 
-# Launch the command center
-squadron engage -w
+# Add anthropic_api_key from the workspace Settings page in Command Center
 ```
 
 Full walkthrough: [Quick Start](https://docs.squadron.sh/getting-started/quickstart).
@@ -88,7 +88,7 @@ Full walkthrough: [Quick Start](https://docs.squadron.sh/getting-started/quickst
 
 **Scheduled, webhook-triggered, budgeted.** Each mission can declare a [`schedule` block](https://docs.squadron.sh/missions/schedules) (cron / daily / interval with timezone + weekday filters), a `trigger` block (webhook), and a [`budget` block](https://docs.squadron.sh/missions/budgets) that halts the run when token or dollar caps are reached.
 
-**Web command center.** `squadron engage -w` launches a local web UI for live mission graph visualization, run history, log streaming, and webhook routing. Or connect multiple Squadron instances to a remote command center.
+**Command Center.** Deploy Command Center as the workspace hub, then run `squadron engage` in the workspace to connect its runner. The first interactive run stores the Command Center URL and runner credential in `.squadron/command-center.json`; mission configuration remains separate.
 
 ## How does it compare?
 
@@ -113,7 +113,7 @@ Honest tradeoffs on each comparison page.
 - **[Budgets](https://docs.squadron.sh/missions/budgets)** — token + dollar caps per mission or per task.
 - **[Memory & Scratchpad](https://docs.squadron.sh/missions/folders)** — sandboxed filesystem locations agents can read/write. Persistent memory (shared with `memory "name"` or per-mission with `memory { }`) plus per-run `scratchpad = true` opt-in. Squadron owns the paths; scratchpads auto-clean after 7 days.
 - **[Gateways](https://docs.squadron.sh/config/gateways)** — managed subprocesses that bridge Squadron to Slack, Discord, Teams, or any custom system via the Gateway SDK.
-- **Encrypted vault** — secrets stored at rest with AES-256-GCM + Argon2id; passphrase in the OS keychain.
+- **Command Center variables** — workspace values encrypted in the control-plane database and delivered to connected workers only in memory.
 - **Single binary, no runtime deps.** Docker images on every release.
 
 ## Docker

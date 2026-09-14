@@ -8,10 +8,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
-
-	"squadron/config"
-	"squadron/config/vault"
 )
 
 type providerInfo struct {
@@ -46,7 +42,7 @@ var quickstartCmd = &cobra.Command{
 	Use:   "quickstart",
 	Short: "Interactive setup wizard for new Squadron projects",
 	Long: `Walk through setting up a new Squadron project interactively.
-Configures your LLM provider, stores your API key securely, and generates
+Configures your LLM provider and generates
 a starter mission that demonstrates Squadron's core features.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if warning, verr := validateConfigDir("."); verr != nil {
@@ -66,7 +62,7 @@ a starter mission that demonstrates Squadron's core features.`,
 		fmt.Printf("\nSquadron configured at %s\n", dir)
 		fmt.Println("\nTo run the starter mission:")
 		fmt.Printf("  squadron mission -c %s hn_research\n", dir)
-		fmt.Println("\nTo start the command center:")
+		fmt.Println("\nTo connect this worker to Command Center:")
 		fmt.Printf("  squadron engage -c %s\n", dir)
 	},
 }
@@ -98,25 +94,14 @@ func RunQuickstart(configPath string) (string, error) {
 	chosen := providers[provider]
 	fmt.Println()
 
-	// Step 2: API key
-	fmt.Printf("Enter your %s API key:\n", chosen.Name)
-	fmt.Printf("  (You can find this at your provider's dashboard)\n")
-	fmt.Println()
-
-	apiKey, err := promptSecret(reader, "API key")
-	if err != nil {
-		return "", fmt.Errorf("could not read API key: %w", err)
-	}
-	fmt.Println()
-
-	// Step 3: Starter mission
+	// Step 2: Starter mission
 	fmt.Println("Include a starter mission? (hn_research)")
 	fmt.Println("  Fetches Hacker News, researches top stories, creates a summary.")
 	fmt.Println()
 	includeStarter := promptYesNo("Include starter mission?")
 	fmt.Println()
 
-	// Step 4: Generate config files (before init so abort leaves no .squadron/)
+	// Step 3: Generate config files.
 	configDir := configPath
 	if configDir == "." {
 		configDir, _ = os.Getwd()
@@ -126,18 +111,15 @@ func RunQuickstart(configPath string) (string, error) {
 		return "", fmt.Errorf("could not generate config: %w", err)
 	}
 
-	// Step 5: Initialize vault and store API key
-	if err := RunInit("", vault.ProviderFile); err != nil {
+	// Step 4: Initialize local runtime state. The matching provider key is
+	// supplied later through the workspace's Command Center settings.
+	if err := RunInit(); err != nil {
 		return "", fmt.Errorf("initialization failed: %w", err)
-	}
-
-	if err := config.SetVar(chosen.VarName, apiKey); err != nil {
-		return "", fmt.Errorf("could not store API key: %w", err)
 	}
 
 	fmt.Println("  Configuration complete:")
 	fmt.Printf("    %s/squadron.hcl\n", configDir)
-	fmt.Println("  API key stored in encrypted vault.")
+	fmt.Printf("  Set %s in Command Center after connecting this worker.\n", chosen.VarName)
 	if includeStarter {
 		fmt.Println()
 		fmt.Println("  Starter mission (hn_research):")
@@ -163,26 +145,6 @@ func promptChoice(reader *bufio.Reader, prompt string, max int) int {
 		}
 		fmt.Printf("  Please enter a number between 1 and %d.\n", max)
 	}
-}
-
-// promptSecret reads a secret value with echo disabled.
-func promptSecret(reader *bufio.Reader, prompt string) (string, error) {
-	if term.IsTerminal(int(os.Stdin.Fd())) {
-		fmt.Printf("%s: ", prompt)
-		password, err := term.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Println() // newline after hidden input
-		if err != nil {
-			return "", err
-		}
-		return strings.TrimSpace(string(password)), nil
-	}
-	// Non-terminal fallback
-	fmt.Printf("%s: ", prompt)
-	line, err := reader.ReadString('\n')
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(line), nil
 }
 
 // generateStarterConfig writes the starter HCL config file.

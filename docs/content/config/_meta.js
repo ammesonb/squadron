@@ -11,5 +11,15 @@ export default {
   mcp_tools: 'MCP Tools',
   mcp_host: 'MCP Host',
   gateways: 'Gateways',
-  command_center: 'Command Center',
+  command_center: 'Workspace Connection',
+  '__missions': { type: 'separator', title: 'Missions' },
+  missions: {
+    title: 'Mission Reference',
+    theme: { collapsed: true },
+  },
+  '__cli': { type: 'separator', title: 'CLI' },
+  cli: {
+    title: 'Command Reference',
+    theme: { collapsed: true },
+  },
 }

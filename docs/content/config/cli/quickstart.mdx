@@ -1,0 +1,46 @@
+---
+title: quickstart
+---
+
+# squadron quickstart
+
+Interactive setup wizard for new Squadron projects. Picks a provider and optionally generates a starter mission that demonstrates Squadron's core features.
+
+## Usage
+
+```bash
+squadron quickstart
+```
+
+The wizard runs in the current working directory. There are no flags.
+
+## What it does
+
+1. **Validates the directory** — refuses to run inside `~`, `/`, `/tmp`, etc., and asks for confirmation if you're somewhere risky.
+2. **Asks which LLM provider you want** — Anthropic, OpenAI, or Gemini.
+3. **Asks if you want a starter mission** — `hn_research`, which fetches the Hacker News front page, researches the top 3 stories in parallel, and produces an executive summary.
+4. **Writes `squadron.hcl`** in the current directory.
+5. **Initializes local runtime state** under `.squadron/`.
+
+If you abort the wizard before the last step, no `.squadron/` directory is created — your filesystem is left clean.
+
+## After Setup
+
+```bash
+# Run the starter mission
+squadron mission hn_research
+
+# Or connect the worker to its assigned workspace
+squadron engage
+```
+
+After connecting, add the provider key from the workspace Settings page in Command Center.
+
+## Auto-Triggered
+
+`squadron engage` automatically launches the quickstart wizard when you run it in a directory that has no `.hcl` files. So you usually don't need to call `quickstart` directly — just `engage` in a fresh directory and it'll guide you through setup.
+
+## See Also
+
+- [engage](/config/cli/engage) — Start and connect the Squadron worker
+- [Variables](/config/variables) — How variables work in HCL

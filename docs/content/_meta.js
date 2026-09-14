@@ -1,18 +1,26 @@
+const hidden = { display: 'hidden' }
+
 export default {
-  '__learn': { type: 'separator', title: 'Learn' },
-  index: 'Introduction',
-  'declarative-agent-framework': 'Declarative Framework',
-  'getting-started': 'Getting Started',
+  // These legacy root routes remain available to direct links and search, but
+  // should not bleed into every section's sidebar. The primary documentation
+  // areas below each own their local navigation tree.
+  index: hidden,
+  'declarative-agent-framework': hidden,
+  'getting-started': hidden,
 
-  '__build': { type: 'separator', title: 'Build' },
-  missions: 'Missions',
-  config: 'Configuration',
-  guides: 'Guides',
+  product: {
+    type: 'page',
+    title: 'Product',
+  },
+  config: {
+    type: 'page',
+    title: 'Configuration',
+  },
+  guides: {
+    type: 'page',
+    title: 'Guides',
+  },
 
-  '__reference': { type: 'separator', title: 'Reference' },
-  cli: 'CLI Reference',
-
-  '__evaluate': { type: 'separator', title: 'Evaluate' },
-  compare: 'Compare',
-  faq: 'FAQ',
+  compare: hidden,
+  faq: hidden,
 }

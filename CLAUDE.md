@@ -47,7 +47,6 @@ Squadron is a declarative framework for building and running AI agent workflows.
 | `plugin/` | gRPC plugin system using hashicorp/go-plugin |
 | `mission/` | Mission runner, task execution, knowledge store |
 | `store/` | Persistence interfaces and SQLite implementation |
-| `scheduler/` | Cron-based mission scheduling and next-fire calculation |
 | `streamers/` | Output streaming interfaces for CLI/TUI |
 | `wsbridge/` | WebSocket bridge client for command center communication |
 | `mcp/` | Consumer-side MCP client: loads external MCP servers (stdio/http/npm/github) declared in `mcp "name" { ... }` blocks and exposes their tools |
@@ -182,45 +181,12 @@ mission "example" {
 
 ### Schedules, Triggers, and Concurrency
 
-Missions can run automatically via schedules (cron-based timers) or triggers (webhooks). Both are defined inside the `mission` block and are active only in serve mode.
+Time-based schedules are product-managed records. The worker does not parse cron or own timers; Command Center dispatches an ordinary run request when an occurrence is due. Webhook entry points remain mission HCL because they define an event-facing route.
 
-#### Schedule Block
+#### Schedules
 
-Three mutually exclusive modes — `at` (daily at specific times), `every` (recurring interval), or `cron` (raw 5-field expression):
+Schedules are created on a mission's Definition page. Command Center persists the cron expression, timezone, mission inputs, active/paused state, and run-as user or service principal. It revalidates that identity's mission Run permission at each occurrence. A `schedule {}` block in worker HCL is an explicit configuration error.
 
-```hcl
-mission "daily_report" {
-  max_parallel = 2   # Max concurrent instances (default: 3)
-
-  # Daily at 9am on weekdays
-  schedule {
-    at       = ["09:00"]
-    weekdays = ["mon", "tue", "wed", "thu", "fri"]
-    timezone = "America/Chicago"
-    inputs = {
-      report_type = "daily"
-    }
-  }
-
-  # Raw cron — Sunday midnight
-  schedule {
-    cron     = "0 0 * * 0"
-    timezone = "America/Chicago"
-  }
-
-  task "generate" { objective = "Generate the report" }
-}
-```
-
-Multiple `schedule` blocks per mission are allowed; each fires independently. Friendly fields (`at`/`every`/`weekdays`) compile to cron expressions via `ToCron()` in `config/mission.go`.
-
-**Field rules:**
-- `at` — time(s) of day in `HH:MM` 24h format. Implies daily. Cannot combine with `every` or `cron`.
-- `every` — interval: `"5m"`, `"15m"`, `"1h"`, `"2h"`, etc. Must divide evenly into 60 minutes (sub-hour) or 24 hours (hourly+). Cannot combine with `at` or `cron`.
-- `weekdays` — day filter: `["mon", "wed", "fri"]`. Works with `at` or `every`.
-- `cron` — standard 5-field cron expression. Mutually exclusive with `at`/`every`/`weekdays`.
-- `timezone` — IANA timezone (e.g. `"America/Chicago"`). Defaults to system local.
-- `inputs` — key-value map passed to the mission when the schedule fires.
 
 #### Trigger Block
 
@@ -276,11 +242,11 @@ mission "expensive_research" {
 
 #### Concurrency (`max_parallel`)
 
-`max_parallel` (default 3) limits concurrent instances of a mission across all sources — schedules, webhooks, and manual runs. When at capacity, new runs are skipped and a `schedule_skip` event is emitted.
+`max_parallel` (default 3) limits concurrent instances of a mission across all sources. A dispatched run at capacity is rejected by the worker.
 
 #### Architecture
 
-The scheduler lives in `scheduler/` but its lifecycle (creation, config updates, shutdown) is managed by `cmd/serve.go`, not wsbridge. The wsbridge client receives a `ConcurrencyTracker` interface for enforcing `max_parallel` on all mission starts. The cron library used is `robfig/cron/v3`.
+Command Center owns durable schedule storage, cron calculation, claiming, permission revalidation, and dispatch. The worker's `wsbridge.MissionConcurrencyTracker` only enforces `max_parallel`; it contains no scheduling or trigger logic.
 
 ### Memory + Scratchpad
 

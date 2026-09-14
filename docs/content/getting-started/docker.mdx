@@ -27,27 +27,27 @@ Squadron in Docker uses a single mount point:
 |-------|---------|
 | `/config` | Your HCL configuration files and `.squadron/` state directory |
 
-All runtime state (vault, plugins, database) lives in `/config/.squadron/`, right alongside your HCL config files. The container's working directory is `/config`, so the `-c` flag is not needed.
+Local runtime state (plugins, mission records, and the worker connection profile) lives in `/config/.squadron/`, right alongside your HCL config files. Workspace variables live in the Command Center database. The container's working directory is `/config`, so the `-c` flag is not needed.
 
-## Run with the Command Center UI
+## Run a connected worker
 
 ```bash
 docker run -it \
   -v ./my-project:/config \
-  -p 8080:8080 \
   ghcr.io/mlund01/squadron engage
 ```
 
-- `-it` is optional — with it, the quickstart wizard runs on an empty project. Without it, Squadron auto-initializes and you set everything up from the UI.
-- `-p 8080:8080` publishes the command center to the host. Open `http://localhost:8080`.
+- `-it` is required for first-time interactive setup. Squadron asks for the deployed product's WebSocket URL and the workspace runner credential.
+- Persist `/config/.squadron/`; it contains the protected worker connection profile and mission state.
+- No inbound port is required. The worker connects outbound to the deployed Squadron product.
 
-The official image sets `SQUADRON_CONTAINER=1`, which makes Squadron run in the foreground and skip browser auto-open. You never need to pass `--foreground` here. Pass `--headless` if you want Squadron to run without the UI (for example, when missions run purely via schedules or a remote command center).
+The official image sets `SQUADRON_CONTAINER=1`, which makes Squadron run in the foreground. You never need to pass `--foreground` here.
 
-If some variables are missing, Squadron still starts — the UI lets you set them after the container is up.
+If configuration or variables are incomplete, the worker still connects in a degraded state so an authorized user can correct them from the product.
 
-## Connect to a Remote Command Center
+## Reuse an existing connection profile
 
-If your HCL config declares a `command_center` block, Squadron connects outbound — no port mapping needed:
+After the first connection, non-interactive starts reuse `/config/.squadron/command-center.json`:
 
 ```bash
 docker run \
@@ -55,7 +55,7 @@ docker run \
   ghcr.io/mlund01/squadron engage
 ```
 
-The local UI is skipped automatically when a `command_center` block is present.
+Do not bake that file into an image or commit it. It contains the workspace's runner credential.
 
 ## Run a Single Mission
 
@@ -74,8 +74,6 @@ services:
     volumes:
       - ./my-project:/config
     command: ["engage"]
-    ports:
-      - "8080:8080"
 ```
 
 ```bash
@@ -84,40 +82,7 @@ docker compose up
 
 ## Setting Variables
 
-Variables are stored in an encrypted vault at `/config/.squadron/vars.vault`. There are two ways to set them:
-
-**Via the command center UI** (easiest): Open the UI at `http://localhost:8080`, navigate to Variables, and add them there.
-
-**Via `vars set` in a running container**:
-
-```bash
-docker exec <container> squadron vars set anthropic_api_key sk-ant-...
-```
-
-## Securing the Vault Passphrase
-
-By default, when Squadron auto-initializes the vault, it writes the passphrase to `/config/.squadron/vault.key` with `0600` permissions. This works fine when the volume is local and trusted.
-
-For stronger production setups, mount a passphrase file as a Docker secret:
-
-```yaml
-services:
-  squadron:
-    image: ghcr.io/mlund01/squadron:latest
-    volumes:
-      - ./my-project:/config
-    command: ["engage"]
-    secrets:
-      - vault_passphrase
-    ports:
-      - "8080:8080"
-
-secrets:
-  vault_passphrase:
-    file: ./vault_passphrase.txt
-```
-
-Squadron checks `/run/secrets/vault_passphrase` automatically. If the file exists, it uses that passphrase instead of the on-disk key. Docker mounts secrets as tmpfs, so the passphrase never touches the container's disk.
+Open the connected workspace's **Settings** page in Command Center and add variables there. Command Center encrypts them in its database and sends the current values to the runner in memory whenever it connects or a value changes. No variable or decryption-key file needs to be mounted into the container.
 
 ## Pinning a Version
 

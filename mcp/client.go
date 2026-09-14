@@ -200,7 +200,7 @@ func startHTTPTransport(name string, spec Spec) (*mcpgoclient.Client, error) {
 	var oauthCfg transport.OAuthConfig
 	if useOAuth {
 		oauthCfg = transport.OAuthConfig{
-			TokenStore:  oauth.NewVaultTokenStore(name),
+			TokenStore:  oauth.NewRuntimeTokenStore(name),
 			PKCEEnabled: true,
 		}
 		if creds, err := oauth.LoadClientCredentials(name); err == nil && creds != nil {

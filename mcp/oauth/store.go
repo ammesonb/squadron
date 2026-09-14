@@ -1,7 +1,5 @@
-// Package oauth is the squadron side of the MCP OAuth 2.1 flow. It provides
-// a vault-backed transport.TokenStore and the interactive login orchestrator
-// used by `squadron mcp login`. mcp-go owns the protocol; this package owns
-// where tokens live.
+// Package oauth is the squadron side of the MCP OAuth 2.1 flow. Tokens are
+// process-local until Command Center connection auth owns their persistence.
 package oauth
 
 import (
@@ -13,14 +11,12 @@ import (
 	"time"
 
 	"github.com/mark3labs/mcp-go/client/transport"
-
-	"squadron/config/kvstore"
 )
 
 const (
-	vaultKeyPrefix  = "oauth:"
-	tokenKeySuffix  = ":token"
-	clientKeySuffix = ":client"
+	runtimeKeyPrefix = "oauth:"
+	tokenKeySuffix   = ":token"
+	clientKeySuffix  = ":client"
 )
 
 // ClientCredentials is what DCR hands back; cached so relogin skips
@@ -30,32 +26,30 @@ type ClientCredentials struct {
 	ClientSecret string `json:"client_secret,omitempty"`
 }
 
-// vaultMu serializes concurrent reads and writes of the OAuth key space,
-// since kvstore itself offers no coordination and refreshes can race logins.
-var vaultMu sync.Mutex
+// tokenMu serializes concurrent reads and writes of the OAuth key space,
+// because refreshes can race logins.
+var tokenMu sync.Mutex
+var tokenEntries = make(map[string]string)
 
-// VaultTokenStore implements transport.TokenStore against squadron's
-// encrypted vault.
-type VaultTokenStore struct {
+// RuntimeTokenStore implements transport.TokenStore against process memory.
+type RuntimeTokenStore struct {
 	name string
 }
 
-func NewVaultTokenStore(name string) *VaultTokenStore {
-	return &VaultTokenStore{name: name}
+func NewRuntimeTokenStore(name string) *RuntimeTokenStore {
+	return &RuntimeTokenStore{name: name}
 }
 
-func (s *VaultTokenStore) GetToken(ctx context.Context) (*transport.Token, error) {
+func (s *RuntimeTokenStore) GetToken(ctx context.Context) (*transport.Token, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	vaultMu.Lock()
-	raw, err := kvstore.Get(tokenKeyFor(s.name))
-	vaultMu.Unlock()
-	if err != nil {
-		// kvstore.Get can't distinguish "missing" from "vault I/O failure"
-		// — return ErrNoToken so mcp-go surfaces it as needs-login rather
-		// than a fatal error.
+	tokenMu.Lock()
+	raw, ok := tokenEntries[tokenKeyFor(s.name)]
+	tokenMu.Unlock()
+	if !ok {
+		// Missing tokens surface as needs-login rather than fatal errors.
 		return nil, transport.ErrNoToken
 	}
 
@@ -66,7 +60,7 @@ func (s *VaultTokenStore) GetToken(ctx context.Context) (*transport.Token, error
 	return &tok, nil
 }
 
-func (s *VaultTokenStore) SaveToken(ctx context.Context, tok *transport.Token) error {
+func (s *RuntimeTokenStore) SaveToken(ctx context.Context, tok *transport.Token) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -85,27 +79,28 @@ func (s *VaultTokenStore) SaveToken(ctx context.Context, tok *transport.Token) e
 		return fmt.Errorf("oauth %q: encoding token: %w", s.name, err)
 	}
 
-	vaultMu.Lock()
-	defer vaultMu.Unlock()
-	return kvstore.Set(tokenKeyFor(s.name), string(blob))
+	tokenMu.Lock()
+	defer tokenMu.Unlock()
+	tokenEntries[tokenKeyFor(s.name)] = string(blob)
+	return nil
 }
 
 // DeleteToken wipes the stored token but preserves ClientCredentials so the
 // next login can skip DCR. Idempotent.
 func DeleteToken(name string) error {
-	vaultMu.Lock()
-	defer vaultMu.Unlock()
-	_ = kvstore.Delete(tokenKeyFor(name))
+	tokenMu.Lock()
+	defer tokenMu.Unlock()
+	delete(tokenEntries, tokenKeyFor(name))
 	return nil
 }
 
 // LoadClientCredentials returns (nil, nil) if none are stored.
 func LoadClientCredentials(name string) (*ClientCredentials, error) {
-	vaultMu.Lock()
-	defer vaultMu.Unlock()
+	tokenMu.Lock()
+	defer tokenMu.Unlock()
 
-	raw, err := kvstore.Get(clientKeyFor(name))
-	if err != nil {
+	raw, ok := tokenEntries[clientKeyFor(name)]
+	if !ok {
 		return nil, nil //nolint:nilerr // missing is a normal state
 	}
 	var creds ClientCredentials
@@ -120,50 +115,59 @@ func SaveClientCredentials(name string, creds ClientCredentials) error {
 	if err != nil {
 		return fmt.Errorf("oauth %q: encoding client credentials: %w", name, err)
 	}
-	vaultMu.Lock()
-	defer vaultMu.Unlock()
-	return kvstore.Set(clientKeyFor(name), string(blob))
+	tokenMu.Lock()
+	defer tokenMu.Unlock()
+	tokenEntries[clientKeyFor(name)] = string(blob)
+	return nil
 }
 
 func DeleteClientCredentials(name string) error {
-	vaultMu.Lock()
-	defer vaultMu.Unlock()
-	_ = kvstore.Delete(clientKeyFor(name))
+	tokenMu.Lock()
+	defer tokenMu.Unlock()
+	delete(tokenEntries, clientKeyFor(name))
 	return nil
 }
 
 func HasToken(name string) bool {
-	vaultMu.Lock()
-	defer vaultMu.Unlock()
-	_, err := kvstore.Get(tokenKeyFor(name))
-	return err == nil
+	tokenMu.Lock()
+	defer tokenMu.Unlock()
+	_, ok := tokenEntries[tokenKeyFor(name)]
+	return ok
 }
 
-func tokenKeyFor(name string) string  { return vaultKeyPrefix + name + tokenKeySuffix }
-func clientKeyFor(name string) string { return vaultKeyPrefix + name + clientKeySuffix }
+func tokenKeyFor(name string) string  { return runtimeKeyPrefix + name + tokenKeySuffix }
+func clientKeyFor(name string) string { return runtimeKeyPrefix + name + clientKeySuffix }
 
-// VaultSnapshot is a point-in-time copy of the OAuth key space so bulk
-// inspectors (e.g. `squadron mcp status`) pay one decrypt instead of 2N.
-type VaultSnapshot struct {
+// TokenSnapshot is a point-in-time copy of the OAuth key space so bulk
+// inspectors can read a stable view while tokens are refreshed.
+type TokenSnapshot struct {
 	entries map[string]string
 }
 
-func LoadVaultSnapshot() (*VaultSnapshot, error) {
-	vaultMu.Lock()
-	defer vaultMu.Unlock()
-	entries, err := kvstore.LoadAll()
-	if err != nil {
-		return nil, err
+func LoadTokenSnapshot() (*TokenSnapshot, error) {
+	tokenMu.Lock()
+	defer tokenMu.Unlock()
+	entries := make(map[string]string, len(tokenEntries))
+	for key, value := range tokenEntries {
+		entries[key] = value
 	}
-	return &VaultSnapshot{entries: entries}, nil
+	return &TokenSnapshot{entries: entries}, nil
 }
 
-func (s *VaultSnapshot) HasToken(name string) bool {
+// ClearRuntimeState removes process-local OAuth tokens and client credentials.
+// It is used when isolating tests and may be used when a worker disconnects.
+func ClearRuntimeState() {
+	tokenMu.Lock()
+	defer tokenMu.Unlock()
+	tokenEntries = make(map[string]string)
+}
+
+func (s *TokenSnapshot) HasToken(name string) bool {
 	_, ok := s.entries[tokenKeyFor(name)]
 	return ok
 }
 
-func (s *VaultSnapshot) Token(name string) (*transport.Token, error) {
+func (s *TokenSnapshot) Token(name string) (*transport.Token, error) {
 	raw, ok := s.entries[tokenKeyFor(name)]
 	if !ok {
 		return nil, transport.ErrNoToken

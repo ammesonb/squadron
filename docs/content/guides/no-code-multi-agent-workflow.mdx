@@ -20,9 +20,10 @@ curl -fsSL https://raw.githubusercontent.com/mlund01/squadron/main/install.sh | 
 Or grab a binary from [GitHub Releases](https://github.com/mlund01/squadron/releases). One file, no runtime dependencies. Full details on the [installation page](/getting-started/installation).
 
 ```bash
-squadron init                 # initialize the encrypted vault
-squadron vars set anthropic_api_key sk-ant-...
+squadron init                 # initialize local runtime state
 ```
+
+After connecting the worker, set `anthropic_api_key` from the workspace Settings page in Command Center.
 
 ## Step 2: declare the model and agents
 
@@ -122,32 +123,11 @@ Squadron prints live progress: which task is running, which agent it's delegatin
 
 ## Step 5: put it on a schedule
 
-Add a `schedule` block to the mission:
+Connect the workspace, open `daily_brief` in the Squadron product, and select **Add schedule** on its Definition page. Use `0 9 * * 1-5`, choose `America/Chicago`, provide the `topic` input, and select the user or service principal that should execute the run.
 
-```hcl
-mission "daily_brief" {
-  # ... everything above ...
+The product stores and fires the schedule even when nobody has the UI open. The workspace worker executes each dispatched run and enforces the mission's concurrency limit.
 
-  schedule {
-    at       = ["09:00"]
-    weekdays = ["mon", "tue", "wed", "thu", "fri"]
-    timezone = "America/Chicago"
-    inputs = {
-      topic = "AI agent frameworks"
-    }
-  }
-}
-```
-
-Then start Squadron in serve mode:
-
-```bash
-squadron serve -c ./config
-```
-
-Squadron's scheduler now fires the mission every weekday at 9 AM Chicago time. No external cron, no systemd unit, no GitHub Action. The whole job description — what runs, when, with what inputs — is in the same HCL file as the workflow.
-
-See [Schedules & Triggers](/missions/schedules) for webhooks, the `every` interval form, and per-mission concurrency limits.
+See [Scheduling Missions](/product/schedules) for run identities, permissions, pausing, and failure behavior.
 
 ## Step 6: extend without writing code
 
@@ -195,8 +175,8 @@ The whole thing is one HCL directory. Commit it. Diff future changes in PRs. Han
 ## See also
 
 - [What is Squadron?](/) — what the framework is and isn't
-- [The Harness](/missions/harness) — the runtime model
-- [Routing](/missions/routing) — `router`, `send_to`, and dynamic activation
-- [Datasets and iteration](/missions/datasets) — fan out a task over a list
+- [The Harness](/config/missions/harness) — the runtime model
+- [Routing](/config/missions/routing) — `router`, `send_to`, and dynamic activation
+- [Datasets and iteration](/config/missions/datasets) — fan out a task over a list
 - [MCP tools](/config/mcp_tools) — pull in any MCP server
 - [FAQ](/faq) — common questions

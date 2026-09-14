@@ -18,17 +18,17 @@ description: Frequently asked questions about Squadron — pricing, license, sup
         { '@type': 'Question', name: 'Does Squadron require Python?', acceptedAnswer: { '@type': 'Answer', text: 'No. Squadron is a standalone Go binary with no runtime dependencies. Python is only required if you want to write a Python plugin (Squadron also supports Go plugins).' } },
         { '@type': 'Question', name: 'Does Squadron support the Model Context Protocol (MCP)?', acceptedAnswer: { '@type': 'Answer', text: 'Yes — in both directions. Squadron can consume any MCP server (npm packages, GitHub release binaries, HTTP endpoints, or local stdio commands) and expose those tools to its agents. Squadron can also run as an MCP server itself, exposing your missions and tools to MCP-compatible clients like Claude Desktop, Claude Code, and Cursor.' } },
         { '@type': 'Question', name: 'What happens if a Squadron mission crashes mid-run?', acceptedAnswer: { '@type': 'Answer', text: 'Squadron persists every commander session, agent session, route decision, and task output to SQLite (or Postgres) as the mission runs. Restart with `squadron mission --resume <id>` and the mission picks up from the last completed step, including mid-flight tool calls.' } },
-        { '@type': 'Question', name: 'Can Squadron run scheduled or webhook-triggered missions?', acceptedAnswer: { '@type': 'Answer', text: 'Yes. Each mission can declare a `schedule` block (cron, daily-at-time, or recurring interval, with timezone and weekday filters) or a `trigger` block (webhook). Squadron runs the scheduler in serve mode with per-mission concurrency limits.' } },
+        { '@type': 'Question', name: 'Can Squadron run scheduled or webhook-triggered missions?', acceptedAnswer: { '@type': 'Answer', text: 'Yes. Time-based schedules are managed in the Squadron product, while webhook entry points use a mission trigger block. The worker enforces per-mission concurrency limits.' } },
         { '@type': 'Question', name: 'How does Squadron compare to LangGraph?', acceptedAnswer: { '@type': 'Answer', text: 'LangGraph is an imperative Python library built on LangChain — you write code that defines a graph and the runtime executes it. Squadron is declarative HCL configuration and a standalone Go binary — the whole workflow lives in a config file and the runtime handles state, resume, scheduling, and budgets out of the box. See the detailed comparison at /compare/langgraph.' } },
         { '@type': 'Question', name: 'How does Squadron compare to CrewAI?', acceptedAnswer: { '@type': 'Answer', text: 'Both are role-based multi-agent frameworks, but CrewAI is imperative Python with sequential or hierarchical processes, while Squadron is declarative HCL with an arbitrary DAG, conditional routing, automatic persistence and resume, scheduled missions, and budgets. See /compare/crewai.' } },
         { '@type': 'Question', name: 'How does Squadron compare to AutoGen?', acceptedAnswer: { '@type': 'Answer', text: 'AutoGen treats multi-agent collaboration as a conversation (GroupChat); Squadron treats it as a workflow (typed task DAG). AutoGen is better for emergent dialogue patterns and research; Squadron is better for deterministic production pipelines. See /compare/autogen.' } },
         { '@type': 'Question', name: 'How does Squadron compare to n8n?', acceptedAnswer: { '@type': 'Answer', text: 'n8n is a general-purpose visual SaaS-automation tool with an AI node category. Squadron is purpose-built for LLM agent workflows with a multi-agent runtime, MCP, and structured task outputs as first-class concepts. Use n8n for SaaS plumbing; use Squadron for the AI layer. See /compare/n8n.' } },
         { '@type': 'Question', name: 'Can non-developers edit Squadron workflows?', acceptedAnswer: { '@type': 'Answer', text: 'HCL is a simple key-value configuration language designed for human authoring (it powers Terraform). Someone comfortable with editing config files but not writing Python can read, review, and modify Squadron missions. Workflow changes show up as readable diffs in pull requests.' } },
-        { '@type': 'Question', name: 'How are secrets stored?', acceptedAnswer: { '@type': 'Answer', text: 'Variables marked `secret = true` are encrypted at rest in `.squadron/vars.vault` using AES-256-GCM with an Argon2id-derived key. The passphrase lives in the OS keychain (macOS Keychain, Linux Secret Service, Windows Credential Manager). Set values with `squadron vars set <name> <value>`.' } },
+        { '@type': 'Question', name: 'How are secrets stored?', acceptedAnswer: { '@type': 'Answer', text: 'Command Center encrypts workspace variables in its database using the deployment master key. Connected workers receive the current values over their authenticated connection and keep them only in memory.' } },
         { '@type': 'Question', name: 'Does Squadron support parallel execution?', acceptedAnswer: { '@type': 'Answer', text: 'Yes. Independent tasks in the DAG run concurrently. Tasks with iteration over a dataset can run iterations in parallel with configurable concurrency limits. Mission-level `max_parallel` caps how many instances of a mission can run simultaneously across all triggers.' } },
-        { '@type': 'Question', name: 'Can Squadron enforce a spending budget?', acceptedAnswer: { '@type': 'Answer', text: 'Yes. Missions and individual tasks can declare a `budget { tokens = ...; dollars = ... }` block. The first limit reached halts the current task and fails the mission cleanly. See /missions/budgets.' } },
+        { '@type': 'Question', name: 'Can Squadron enforce a spending budget?', acceptedAnswer: { '@type': 'Answer', text: 'Yes. Missions and individual tasks can declare a `budget { tokens = ...; dollars = ... }` block. The first limit reached halts the current task and fails the mission cleanly. See /config/missions/budgets.' } },
         { '@type': 'Question', name: 'What language are Squadron plugins written in?', acceptedAnswer: { '@type': 'Answer', text: 'Plugins can be written in Go or Python. They run as separate subprocesses and communicate with Squadron over gRPC via hashicorp/go-plugin. Squadron auto-builds local plugins from source on every config load with content-hash caching. See /config/plugins.' } },
-        { '@type': 'Question', name: 'Does Squadron have a web UI?', acceptedAnswer: { '@type': 'Answer', text: 'Yes — the command center. Run `squadron serve -w` and a browser opens to a live mission-graph visualizer with run history, log streaming, and webhook routing. Connect multiple Squadron instances to one central command center by declaring a `command_center` block.' } },
+        { '@type': 'Question', name: 'Does Squadron have a web UI?', acceptedAnswer: { '@type': 'Answer', text: 'Yes. Deploy the Squadron product, create a workspace, then run `squadron engage` to connect the project worker with its workspace credential.' } },
         { '@type': 'Question', name: 'Can I use Squadron in production?', acceptedAnswer: { '@type': 'Answer', text: 'Yes. Squadron is designed for production from day one — persistent state, automatic resume, scheduled execution, webhook triggers, budget enforcement, structured outputs, and a single-binary deployment story. Run it under your favorite process supervisor or in Docker.' } },
         { '@type': 'Question', name: 'Where can I get help?', acceptedAnswer: { '@type': 'Answer', text: 'File issues at github.com/mlund01/squadron. The full documentation is at docs.squadron.sh.' } },
       ],
@@ -83,9 +83,9 @@ The mission picks up from the last completed step, including mid-flight tool cal
 
 ## Can Squadron run scheduled or webhook-triggered missions?
 
-Yes. Each mission can declare a `schedule` block (cron, daily-at-time, or recurring interval, with timezone and weekday filters) or a `trigger` block (webhook). Squadron runs the scheduler in serve mode with per-mission concurrency limits.
+Yes. Time-based schedules are created on a mission's Definition page and stored by the Squadron product. Webhook entry points remain a `trigger` block in mission configuration. The worker enforces per-mission concurrency limits for both.
 
-See [Schedules & Triggers](/missions/schedules) for the full syntax.
+See [Scheduling Missions](/product/schedules) for details.
 
 ## How does Squadron compare to LangGraph?
 
@@ -111,19 +111,19 @@ HCL is a simple key-value configuration language designed for human authoring (i
 
 ## How are secrets stored?
 
-Variables marked `secret = true` are encrypted at rest in `.squadron/vars.vault` using AES-256-GCM with an Argon2id-derived key. The encryption passphrase lives in the OS keychain (macOS Keychain, Linux Secret Service, Windows Credential Manager). Set values with `squadron vars set <name> <value>`.
+Command Center encrypts workspace variables in its database using the deployment master key. Connected workers receive the current values over their authenticated connection and keep them only in memory. Manage values from the workspace Settings page.
 
 See [Variables](/config/variables) for the full story.
 
 ## Does Squadron support parallel execution?
 
-Yes. Independent tasks in the DAG run concurrently. Tasks with [iteration over a dataset](/missions/iteration) can run iterations in parallel with configurable concurrency limits. Mission-level `max_parallel` caps how many instances of a mission can run simultaneously across all triggers.
+Yes. Independent tasks in the DAG run concurrently. Tasks with [iteration over a dataset](/config/missions/iteration) can run iterations in parallel with configurable concurrency limits. Mission-level `max_parallel` caps how many instances of a mission can run simultaneously across all triggers.
 
 ## Can Squadron enforce a spending budget?
 
 Yes. Missions and individual tasks can declare a `budget { tokens = ...; dollars = ... }` block. The first limit reached halts the current task and fails the mission cleanly.
 
-See [Budgets](/missions/budgets) for the full mechanics.
+See [Budgets](/config/missions/budgets) for the full mechanics.
 
 ## What language are Squadron plugins written in?
 
@@ -131,7 +131,7 @@ See [Budgets](/missions/budgets) for the full mechanics.
 
 ## Does Squadron have a web UI?
 
-Yes — the [command center](/cli/engage). Run `squadron serve -w` and a browser opens to a live mission-graph visualizer with run history, log streaming, and webhook routing. Connect multiple Squadron instances to one central command center by declaring a `command_center` block.
+Yes — the [Squadron product](/product/overview). Deploy it, create a workspace, then run `squadron engage` to connect the project worker with its workspace credential. The product provides mission visualization, run history, live execution, and access control.
 
 ## Can I use Squadron in production?
 
@@ -141,4 +141,4 @@ Yes. Squadron is designed for production from day one — persistent state, auto
 
 - File issues at [github.com/mlund01/squadron](https://github.com/mlund01/squadron/issues)
 - Full documentation: [docs.squadron.sh](https://docs.squadron.sh)
-- Browse the [CLI command reference](/cli/quickstart) or [configuration reference](/config/overview)
+- Browse the [CLI command reference](/config/cli/quickstart) or [configuration reference](/config/overview)

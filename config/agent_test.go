@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"os"
 	"squadron/aitools"
 	"squadron/config"
 
@@ -43,6 +44,22 @@ agent "clock" {
 	})
 
 	Describe("parsing", func() {
+		It("retains the exact source from the loaded file even after disk changes", func() {
+			rawAgent := `agent "helper" {
+  model       = models.anthropic.claude_sonnet_4
+  personality = "Helpful" # original comment
+}`
+			_, path := writeFixture("agents.hcl", minimalVarsHCL()+minimalModelHCL()+"\n"+rawAgent)
+			cfg, err := config.LoadFile(path)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.Agents[0].Source).NotTo(BeNil())
+			Expect(cfg.Agents[0].Source.Path).To(Equal("agents.hcl"))
+			Expect(cfg.Agents[0].Source.Content).To(Equal(rawAgent))
+			Expect(cfg.Agents[0].Source.FileRevision).To(HaveLen(64))
+			Expect(os.WriteFile(path, []byte("# edited after config load"), 0600)).To(Succeed())
+			Expect(cfg.Agents[0].Source.Content).To(Equal(rawAgent))
+		})
+
 		It("parses an agent with model reference and internal tools", func() {
 			hcl := minimalVarsHCL() + minimalModelHCL() + `
 agent "helper" {
@@ -61,12 +78,12 @@ agent "helper" {
 			Expect(cfg.Agents[0].Tools).To(ConsistOf("builtins.http.get", "builtins.http.post"))
 		})
 
-		It("silently ignores the deprecated role attribute", func() {
+		It("parses the agent role", func() {
 			hcl := minimalVarsHCL() + minimalModelHCL() + `
 agent "helper" {
   model       = models.anthropic.claude_sonnet_4
   personality = "Friendly"
-  role        = "Legacy role field — should be ignored"
+  role        = "Answers product questions"
   tools       = [builtins.http.get]
 }
 `
@@ -75,6 +92,7 @@ agent "helper" {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(cfg.Agents).To(HaveLen(1))
 			Expect(cfg.Agents[0].Personality).To(Equal("Friendly"))
+			Expect(cfg.Agents[0].Role).To(Equal("Answers product questions"))
 		})
 
 		It("parses an agent with pruning block", func() {

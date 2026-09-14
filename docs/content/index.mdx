@@ -54,7 +54,7 @@ Two tiers of LLMs, doing different jobs:
 - **Agents** execute. They pick up an objective and use their tools (via native function calling) until the job is done.
 - **Missions** wire it together: a graph of tasks, structured outputs flowing between them, and conditional branches the commander chooses on the fly.
 
-Use a fast model for routing, a capable one for the hard stuff. Each role can use a different provider in the same mission. See [The Harness](/missions/harness) for the full execution model.
+Use a fast model for routing, a capable one for the hard stuff. Each role can use a different provider in the same mission. See [The Harness](/config/missions/harness) for the full execution model.
 
 ## What's included
 
@@ -62,9 +62,9 @@ Use a fast model for routing, a capable one for the hard stuff. Each role can us
 - **[Plugins](/config/plugins)** — fast, typed, native Go *and* Python plugins for browser automation, shell access, HTTP APIs, or anything custom. Run as subprocesses over gRPC; auto-built from local source with content-hash caching.
 - **[MCP tools](/config/mcp_tools)** — declare any [Model Context Protocol](https://modelcontextprotocol.io) server (npm, GitHub release, HTTP, local binary). Squadron auto-installs and proxies tools to your agents.
 - **[MCP host](/config/mcp_host)** — Squadron itself runs as an MCP server, so Claude Desktop / Claude Code / Cursor can see your missions and kick off runs.
-- **[Schedules & webhooks](/missions/schedules)** — cron-based or HTTP-triggered missions, with per-mission concurrency limits.
-- **[Web command center](/cli/engage)** — live mission graph visualization, run history, log streaming.
-- **[Budgets](/missions/budgets)** — declarative token + dollar caps that halt missions before runaway spend.
+- **[Schedules & webhooks](/product/schedules)** — centrally managed cron runs and configured HTTP triggers.
+- **[Squadron product](/product/overview)** — workspaces, live mission visualization, run history, and access control.
+- **[Budgets](/config/missions/budgets)** — declarative token + dollar caps that halt missions before runaway spend.
 
 ## When to use Squadron
 
@@ -97,7 +97,7 @@ See the detailed comparison pages for honest tradeoffs.
 - [Install](/getting-started/installation) — one command, single binary
 
 **Building with it?**
-- [Missions](/missions/overview) — the workflow model
+- [Missions](/config/missions/overview) — the workflow model
 - [Configuration](/config/overview) — every block, every field
 - [No-Code walkthrough](/guides/no-code-multi-agent-workflow) — full daily-brief pipeline in HCL
 

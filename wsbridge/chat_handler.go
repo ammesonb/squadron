@@ -26,6 +26,11 @@ func NewWSChatHandler(client *Client, sessionID string) *WSChatHandler {
 }
 
 func (h *WSChatHandler) sendChatEvent(eventType protocol.ChatEventType, data interface{}) {
+	// Scoped conversations poll their authenticated state (including partial
+	// answers); do not leave their events in legacy unscoped SSE buffers.
+	if strings.HasPrefix(h.sessionID, "cc_") {
+		return
+	}
 	env, err := protocol.NewEvent(protocol.TypeChatEvent, &protocol.ChatEventPayload{
 		SessionID: h.sessionID,
 		EventType: eventType,

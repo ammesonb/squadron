@@ -20,8 +20,8 @@ type mcpTool struct {
 	info   *ToolInfo
 }
 
-func (t *mcpTool) ToolName() string              { return t.info.Name }
-func (t *mcpTool) ToolDescription() string       { return t.info.Description }
+func (t *mcpTool) ToolName() string                  { return t.info.Name }
+func (t *mcpTool) ToolDescription() string           { return t.info.Description }
 func (t *mcpTool) ToolPayloadSchema() aitools.Schema { return t.info.Schema }
 
 // Call invokes the tool on the MCP server. params is a JSON string (the agent's
@@ -32,10 +32,18 @@ func (t *mcpTool) ToolPayloadSchema() aitools.Schema { return t.info.Schema }
 // dropped), Call transparently respawns it via ensureAlive and retries once.
 // A second failure is surfaced as a tool error so the agent can react.
 func (t *mcpTool) Call(ctx context.Context, params string) string {
+	text, _ := t.CallMedia(ctx, params)
+	return text
+}
+
+// CallMedia preserves MCP image content as typed media instead of silently
+// discarding it. Text-returning servers that embed image data URLs are also
+// normalized here for compatibility with existing MCP implementations.
+func (t *mcpTool) CallMedia(ctx context.Context, params string) (string, []aitools.MediaBlock) {
 	var args map[string]any
 	if strings.TrimSpace(params) != "" {
 		if err := json.Unmarshal([]byte(params), &args); err != nil {
-			return "error: invalid JSON params for " + t.info.Name + ": " + err.Error()
+			return "error: invalid JSON params for " + t.info.Name + ": " + err.Error(), nil
 		}
 	}
 
@@ -46,31 +54,49 @@ func (t *mcpTool) Call(ctx context.Context, params string) string {
 	result, err := t.callOnce(ctx, req)
 	if err != nil && isTransportError(err) {
 		if respawnErr := t.client.ensureAlive(); respawnErr != nil {
-			return "error: " + respawnErr.Error()
+			return "error: " + respawnErr.Error(), nil
 		}
 		result, err = t.callOnce(ctx, req)
 	}
 	if err != nil {
-		return "error: " + err.Error()
+		return "error: " + err.Error(), nil
 	}
 
+	text, media := contentFromMCPResult(result)
+
+	if result.IsError {
+		if text == "" {
+			return "error: tool returned error with no content", nil
+		}
+		return "error: " + text, nil
+	}
+	return text, media
+}
+
+func contentFromMCPResult(result *mcpproto.CallToolResult) (string, []aitools.MediaBlock) {
 	var out strings.Builder
+	var media []aitools.MediaBlock
 	for _, c := range result.Content {
-		if tc, ok := c.(mcpproto.TextContent); ok {
+		switch content := c.(type) {
+		case mcpproto.TextContent:
 			if out.Len() > 0 {
 				out.WriteByte('\n')
 			}
-			out.WriteString(tc.Text)
+			out.WriteString(content.Text)
+		case mcpproto.ImageContent:
+			media = append(media, aitools.MediaBlock{Kind: aitools.MediaKindImage, MediaType: content.MIMEType, Data: content.Data})
+		case *mcpproto.ImageContent:
+			if content != nil {
+				media = append(media, aitools.MediaBlock{Kind: aitools.MediaKindImage, MediaType: content.MIMEType, Data: content.Data})
+			}
 		}
 	}
 
-	if result.IsError {
-		if out.Len() == 0 {
-			return "error: tool returned error with no content"
-		}
-		return "error: " + out.String()
+	extracted := aitools.ExtractImages(out.String())
+	for _, image := range extracted.Images {
+		media = append(media, aitools.MediaBlock{Kind: aitools.MediaKindImage, MediaType: image.MediaType, Data: image.Data})
 	}
-	return out.String()
+	return extracted.RemainingText, media
 }
 
 // callOnce forwards a single CallTool request to the current transport. The

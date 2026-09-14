@@ -33,8 +33,8 @@ func init() {
 
 // applyHome resolves the .squadron/ directory from the command's -c
 // value, the --squadron-home flag, and the SQUADRON_HOME env var, then
-// seeds paths.SquadronHome() so every state consumer (vault, DB,
-// plugins, MCP cache) agrees on the location.
+// seeds paths.SquadronHome() so every local state consumer (DB, plugins,
+// MCP cache) agrees on the location.
 //
 // Must be called before the first SquadronHome()-touching operation in
 // a command. Calling it twice in one process is a no-op — paths caches

@@ -1,0 +1,41 @@
+---
+title: Running Missions
+---
+
+# Running Missions
+
+Open a mission and select **Run mission**. Squadron checks authorization before showing the run form or sending work to the connected worker.
+
+## Choose an execution identity
+
+The run dialog always appears, even when the mission has no configured inputs. It shows the identities that may execute this mission:
+
+- **Yourself**, when your workspace role and mission grants allow it.
+- **A service principal**, when you may use it and it has a Run grant for the mission.
+
+When multiple identities are available, choose one before starting the run. Squadron defaults to your user identity when it is eligible; otherwise it selects the first eligible service principal by name.
+
+## Provide inputs
+
+Mission input fields come from the mission's HCL definition. Protected values are handled as inputs rather than rendered into configuration. File inputs are uploaded as structured content and materialized read-only by the worker.
+
+## Follow execution
+
+The run page is organized from high-level context to deeper telemetry:
+
+1. Mission inputs and run state
+2. The execution canvas
+3. The task execution timeline
+4. Aggregate time, outcome, model, tool, and cost telemetry
+
+Selecting a task opens its conversation-style execution view. Commander turns, reasoning, tools, and delegated agents are distinct. Delegated agent work can be opened as a complete agent session rather than only the portion overlapping a commander turn.
+
+The trace view shows execution spans on a shared task clock. Tool calls are nested under their model turn, while delegated agents remain a separate span that can be drilled into.
+
+## Stop and resume
+
+Runs may be stopped and resumed when the current identity is allowed to control them. The initiating user retains control of a run started as a service principal. Managers and Admins can control any run in their workspace.
+
+## Disconnected workspaces
+
+A mission cannot start while its workspace worker is disconnected. The workspace status indicator and run controls surface this state without discarding the mission definition or prior run history.

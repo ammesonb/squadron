@@ -1,112 +1,52 @@
 ---
-title: Command Center
+title: Workspace Connection
 ---
 
-# command_center
+# Workspace Connection
 
-Declare a `command_center` block to connect Squadron outbound to a remote command center instance — a central web UI that runs missions, watches live execution, and exposes webhooks across multiple Squadron deployments.
+> **Deprecated configuration block:** Current versions of `squadron engage` obtain the product URL and worker credential from the local connection profile. They do not use `command_center` HCL for the active worker connection.
 
-When a `command_center` block is present, `squadron engage` skips the local UI and opens a persistent websocket to the remote command center instead. Without the block, `squadron engage` launches the local UI by default (pass `--headless` to opt out entirely).
-
-Beyond live execution, the command center can also receive per-mission [notifications](/missions/notifications) — a bell feed of `mission_completed` / `mission_failed` / `mission_stopped` events for missions that opt in.
-
-## Minimal Example
+The `command_center` block remains parseable for compatibility with older projects:
 
 ```hcl
 command_center {
-  url           = "wss://command-center.example.com/ws"
-  instance_name = "production-scraper"
-}
-```
-
-The `instance_name` identifies this deployment in the command center UI — two Squadron processes with the same name will conflict, so pick something unique per host or environment.
-
-## Full Example
-
-```hcl
-command_center {
-  url                = "wss://command-center.example.com/ws"
-  instance_name      = "production-scraper"
+  url                = "wss://squadron.example.com/ws"
+  instance_name      = "production"
   auto_reconnect     = true
   reconnect_interval = 10
 }
 ```
 
-## Fields
+Do not put a worker credential in HCL. The credential is a machine secret and is deliberately stored outside source-controlled configuration.
 
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `url` | string | yes | — | WebSocket URL of the command center (`ws://` or `wss://`). Must end with the `/ws` path the server registers. |
-| `instance_name` | string | yes | — | Unique identifier for this Squadron instance. Shown in the command center UI and used in webhook routes (`/webhooks/<instance_name>/<path>`). |
-| `auto_reconnect` | bool | no | `false` | When `true`, Squadron keeps retrying on connection drops instead of exiting. Recommended for production. |
-| `reconnect_interval` | number | no | `5` | Seconds to wait between reconnection attempts. Only used when `auto_reconnect = true`. |
+## Current connection setup
 
-## Using Variables
+Run:
 
-Credentials and environment-specific URLs should live in the vault:
-
-```hcl
-variable "cc_url" {
-  secret = true
-}
-
-command_center {
-  url           = vars.cc_url
-  instance_name = "staging-worker"
-}
+```bash
+squadron engage
 ```
 
-Set the value with `squadron vars set cc_url wss://...`.
+On the first interactive run for a project, Squadron asks for:
 
-## Interaction with `squadron engage`
+- The WebSocket URL shown in the workspace's connection details
+- The workspace runner credential
 
-| Scenario | Behavior |
-|----------|----------|
-| No `command_center` block, no `--headless` | Launches local command center UI (default) |
-| No `command_center` block, `--headless` | Runs fully headless (schedules and webhooks only) |
-| `command_center` block present | Connects to the remote command center; local UI is skipped |
-| `command_center` block present, `--headless` passed | Error — remove one or the other |
+It saves those values to `.squadron/command-center.json` with owner-only file permissions. Subsequent background and system-service starts reuse that profile.
 
-See [engage](/cli/engage) for the full command reference.
+Each workspace has one worker credential and one connected Squadron worker. Use separate project directories and connection profiles for separate workspaces.
 
-## Webhooks Across Instances
+## Legacy fields
 
-Each Squadron instance registered with the command center exposes its mission `trigger` blocks under `/webhooks/<instance_name>/<path>` on the command center's HTTP interface. The `instance_name` is what disambiguates webhooks when multiple Squadron deployments share one command center.
+| Field | Type | Description |
+|---|---|---|
+| `url` | string | WebSocket URL used by older worker versions. |
+| `instance_name` | string | Legacy worker display name. Current shared deployments derive the workspace identity from the credential. |
+| `auto_reconnect` | bool | Legacy reconnect switch. Current Engage workers reconnect continuously. |
+| `reconnect_interval` | number | Legacy retry interval in seconds. |
 
-```hcl
-mission "ingest" {
-  trigger {
-    webhook_path = "/ingest"
-    secret       = vars.hook_secret
-  }
-  task "process" { objective = "Process incoming data" }
-}
-```
+## See also
 
-With `instance_name = "production-scraper"`, this mission is reachable at:
-
-```
-POST https://command-center.example.com/webhooks/production-scraper/ingest
-```
-
-See [Schedules & Triggers](/missions/schedules) for webhook details.
-
-## Graceful Degradation
-
-If the command center is unreachable at startup:
-
-- With `auto_reconnect = true` — Squadron logs the failure, keeps retrying, and runs any local schedules in the meantime.
-- With `auto_reconnect = false` — Squadron logs the failure once and continues without a command center connection. Config changes on disk trigger a reconnect attempt.
-
-Either way, Squadron does not crash on a missing command center. This makes it safe to roll out config changes that depend on an eventually-available command center.
-
-## Human Input Inbox
-
-The command center exposes an **Inbox** surface for any agent call to [`builtins.human.ask`](/config/tools#human-input). New questions appear live; you pick a quick-reply button, toggle multi-select choices, or type a free-text answer. A toast + chime fire on every new question (chime works in backgrounded tabs), and resolutions clear in real time across every connected surface — Inbox, mission detail, gateways. See [Tools → Human Input](/config/tools#human-input) for the agent-side schema and [Gateways](/config/gateways) for surfacing questions outside the command center.
-
-## See Also
-
-- [engage](/cli/engage) — How to start Squadron
-- [Variables](/config/variables) — Storing the command center URL and secrets
-- [Schedules & Triggers](/missions/schedules) — Webhook routing through the command center
-- [Gateways](/config/gateways) — Bridge `human.ask` to Discord, Slack, etc.
+- [Setup and Workspaces](/product/setup)
+- [engage](/config/cli/engage)
+- [Access Control](/product/access)

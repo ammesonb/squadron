@@ -19,7 +19,7 @@ func TestConfig(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	// Isolate all config tests from the real vault/keychain by
+	// Isolate all config tests from the real local runtime state by
 	// changing into a temp dir so .squadron/ resolves there.
 	var err error
 	origDir, err = os.Getwd()

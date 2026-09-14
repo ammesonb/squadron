@@ -42,10 +42,12 @@ func ConfigToInstanceConfig(cfg *config.Config) protocol.InstanceConfig {
 			skillNames = append(skillNames, ls.Name)
 		}
 		ic.Agents = append(ic.Agents, protocol.AgentInfo{
-			Name:   a.Name,
-			Model:  a.Model,
-			Tools:  a.Tools,
-			Skills: skillNames,
+			Name:        a.Name,
+			Description: a.Personality,
+			Role:        a.Role,
+			Model:       a.Model,
+			Tools:       a.Tools,
+			Skills:      skillNames,
 		})
 	}
 
@@ -83,11 +85,13 @@ func ConfigToInstanceConfig(cfg *config.Config) protocol.InstanceConfig {
 				mSkillNames = append(mSkillNames, ls.Name)
 			}
 			ic.Agents = append(ic.Agents, protocol.AgentInfo{
-				Name:    a.Name,
-				Model:   a.Model,
-				Tools:   a.Tools,
-				Skills:  mSkillNames,
-				Mission: m.Name,
+				Name:        a.Name,
+				Description: a.Personality,
+				Role:        a.Role,
+				Model:       a.Model,
+				Tools:       a.Tools,
+				Skills:      mSkillNames,
+				Mission:     m.Name,
 			})
 			for _, s := range a.LocalSkills {
 				ic.Skills = append(ic.Skills, protocol.SkillInfo{
@@ -107,6 +111,15 @@ func ConfigToInstanceConfig(cfg *config.Config) protocol.InstanceConfig {
 			Description: m.Directive,
 			Commander:   m.Commander.Model,
 			Agents:      m.Agents,
+		}
+		if m.Source != nil {
+			mi.Source = &protocol.ConfigSourceInfo{
+				Path:         m.Source.Path,
+				StartLine:    m.Source.StartLine,
+				EndLine:      m.Source.EndLine,
+				Content:      m.Source.Content,
+				FileRevision: m.Source.FileRevision,
+			}
 		}
 		for _, ds := range m.Datasets {
 			di := protocol.DatasetInfo{
@@ -159,18 +172,6 @@ func ConfigToInstanceConfig(cfg *config.Config) protocol.InstanceConfig {
 			}
 			mi.Tasks = append(mi.Tasks, ti)
 		}
-		// Map schedules
-		for i := range m.Schedules {
-			mi.Schedules = append(mi.Schedules, protocol.ScheduleInfo{
-				Expression: m.Schedules[i].ToCron(),
-				At:         m.Schedules[i].At,
-				Every:      m.Schedules[i].Every,
-				Weekdays:   m.Schedules[i].Weekdays,
-				Timezone:   m.Schedules[i].Timezone,
-				Inputs:     m.Schedules[i].Inputs,
-			})
-		}
-
 		// Map trigger
 		if m.Trigger != nil {
 			mi.Trigger = &protocol.TriggerInfo{
@@ -355,4 +356,3 @@ func convertAIToolProperty(p aitools.Property) protocol.ToolProperty {
 	}
 	return tp
 }
-

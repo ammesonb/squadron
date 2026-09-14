@@ -27,7 +27,7 @@ type CallbackSource interface {
 
 // RunLoginFlow runs discovery, DCR (if needed), PKCE, browser consent, and
 // token exchange for one MCP server. On success the token is already in the
-// vault via the handler's VaultTokenStore.
+// current worker process via the handler's RuntimeTokenStore.
 func RunLoginFlow(ctx context.Context, name, serverURL string, source CallbackSource) error {
 	if name == "" || serverURL == "" {
 		return fmt.Errorf("oauth: login requires name and server URL")
@@ -57,7 +57,7 @@ func RunLoginFlow(ctx context.Context, name, serverURL string, source CallbackSo
 
 	cfg := transport.OAuthConfig{
 		RedirectURI:           redirectURI,
-		TokenStore:            NewVaultTokenStore(name),
+		TokenStore:            NewRuntimeTokenStore(name),
 		PKCEEnabled:           true,
 		AuthServerMetadataURL: authMetadataURL,
 	}

@@ -1,0 +1,40 @@
+---
+title: Access Control
+---
+
+# Access Control
+
+Access is assigned in two layers: a workspace role establishes general product capabilities, and mission grants determine which identities may execute specific missions.
+
+## Workspace roles
+
+Workspace roles are cumulative. Each role includes the capabilities of the roles before it.
+
+| Role | Capabilities |
+|---|---|
+| **Reader** | View agents, missions, configuration, and all run data. |
+| **Developer** | Reader capabilities plus edit and validate workspace configuration. This role also owns deploy and merge authority as those workflows are enabled. Mission execution remains granular. |
+| **Manager** | Developer capabilities plus manage runtime variables and run every mission. |
+| **Admin** | Full workspace control. Deployment administrators also receive effective Admin access to every workspace. |
+
+A workspace has one role per user. Removing a user's workspace access also removes the user's mission grants and run-as assignments in that workspace.
+
+## Mission Run grants
+
+Readers and Developers can run only the missions explicitly selected for them. Managers and Admins can run every mission and do not need individual grants.
+
+Service principals always use explicit mission Run grants. Adding a service principal to a workspace without selecting missions gives it workspace membership but no execution authority.
+
+## Run-as grants
+
+For each service principal, administrators select the workspace users who may use it as an execution identity. The permission is scoped to the workspace and is removed automatically if either the user's or service principal's workspace access is removed.
+
+The product only offers identities that are currently eligible for the selected mission. If no identity is eligible, Run mission is disabled. If more than one identity is eligible, the run dialog requires an explicit selection and defaults to the user when possible.
+
+## Run visibility and control
+
+Readers can currently view all run data in their workspace. A user can stop or resume a run they initiated, including a run initiated as a service principal. Managers and Admins can control any run in their workspace. A directly authenticated service principal can control only runs attributed to itself.
+
+## Current boundary
+
+Workspace RBAC answers **who may operate Squadron**. It does not yet select the downstream OAuth or API credentials used by plugins and MCP servers. Identity-aware connection authorization is planned separately.

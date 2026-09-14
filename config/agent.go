@@ -99,9 +99,14 @@ type Pruning struct {
 
 // Agent represents an AI agent configuration
 type Agent struct {
+	// Source is the original HCL block from this loaded configuration snapshot.
+	// It is exposed explicitly by the definition API, not runtime serialization.
+	Source *ConfigSource `hcl:"-" json:"-"`
+
 	Name        string   `hcl:"name,label"`
 	Model       string   `hcl:"model"`
 	Personality string   `hcl:"personality"`
+	Role        string   `hcl:"role,optional"`
 	Tools       []string `hcl:"tools,optional"`
 	Skills      []string `hcl:"-"`
 

@@ -7,47 +7,27 @@ import (
 	"path/filepath"
 	"strings"
 
-	"squadron/config"
-	"squadron/config/vault"
-	"squadron/internal/paths"
-
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
+
+	"squadron/internal/paths"
 )
 
-var (
-	initPassphraseFile string
-	initVaultProvider  string
-	initConfigPath     string
-)
+var initConfigPath string
 
 var initCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Initialize the encrypted vault for secret storage",
-	Long: `Create the .squadron directory in the current working directory
-and set up an encrypted vault for secret storage.
+	Short: "Initialize local Squadron runtime state",
+	Long: `Create the local .squadron runtime directory.
 
-A cryptographically random passphrase is generated and stored via the
-configured vault provider:
-
-  file     (default) — passphrase is written to .squadron/vault.key
-                       (0600 perms). No OS keychain prompts.
-  keychain          — passphrase is stored in the OS keychain (macOS
-                       Keychain, Linux Secret Service, Windows Cred
-                       Manager). More secure at rest but triggers a
-                       password / passkey prompt on first access per
-                       process.
-
-Use --passphrase-file to provide your own passphrase instead of
-auto-generating one.
-
-For guided setup that also picks a provider, stores an API key, and
-generates a starter mission, use 'squadron quickstart' instead.`,
+Workspace variables and secrets are managed by Command Center and are not
+stored by the worker. For guided configuration, use 'squadron quickstart'.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := applyHome(initConfigPath); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		if err := RunInit(initPassphraseFile, initVaultProvider); err != nil {
+		if err := RunInit(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -56,125 +36,33 @@ generates a starter mission, use 'squadron quickstart' instead.`,
 
 func init() {
 	rootCmd.AddCommand(initCmd)
-	initCmd.Flags().StringVar(&initPassphraseFile, "passphrase-file", "", "Path to file containing vault passphrase")
-	initCmd.Flags().StringVar(&initVaultProvider, "vault-provider", vault.ProviderFile,
-		fmt.Sprintf("Vault provider: %q or %q", vault.ProviderFile, vault.ProviderKeychain))
-	initCmd.Flags().StringVarP(&initConfigPath, "config", "c", "",
-		"Path to config directory (initializes <config>/.squadron/). Default: ./.squadron")
+	initCmd.Flags().StringVarP(&initConfigPath, "config", "c", "", "Path to config directory")
 }
 
-// RunInit performs the initialization logic. Called by quickstart and the
-// --init flag on engage/chat/mission.
-func RunInit(passphraseFile, providerName string) error {
+func RunInit() error {
 	if err := paths.EnsureHome(); err != nil {
 		return fmt.Errorf("creating squadron home: %w", err)
 	}
-
-	vaultPath, err := config.GetVaultFilePath()
-	if err != nil {
-		return err
-	}
-
-	v := vault.Open(vaultPath)
-	if v.Exists() {
-		fmt.Println("Squadron is already initialized.")
-		return nil
-	}
-
-	provider, err := vault.ProviderByName(providerName)
-	if err != nil {
-		return err
-	}
-
-	var passphrase []byte
-	switch {
-	case passphraseFile != "":
-		passphrase, err = vault.ReadPassphraseFile(passphraseFile)
-		if err != nil {
-			return fmt.Errorf("reading passphrase file: %w", err)
-		}
-	default:
-		if data, readErr := vault.ReadPassphraseFile(vault.DockerSecretPath); readErr == nil {
-			passphrase = data
-		} else {
-			passphrase, err = vault.GeneratePassphrase()
-			if err != nil {
-				return fmt.Errorf("generating passphrase: %w", err)
-			}
-		}
-	}
-	defer vault.ZeroBytes(passphrase)
-
-	// Best effort: a keychain backend may fail in Docker / CI.
-	if storeErr := provider.Store(passphrase); storeErr != nil {
-		if passphraseFile == "" {
-			if _, dockerErr := os.Stat(vault.DockerSecretPath); dockerErr != nil {
-				fmt.Fprintf(os.Stderr, "Note: %s provider unavailable (%v). Using default passphrase.\n", provider.Name(), storeErr)
-				passphrase = []byte(vault.FallbackPassphrase)
-			}
-		}
-	}
-
-	// Migrate existing vars.txt if present
-	vars := make(map[string]string)
-	varsPath, err := config.GetVarsFilePath()
-	if err != nil {
-		return err
-	}
-
-	if _, statErr := os.Stat(varsPath); statErr == nil {
-		vars, err = config.LoadPlaintextVars(varsPath)
-		if err != nil {
-			return fmt.Errorf("reading existing vars.txt: %w", err)
-		}
-		if len(vars) > 0 {
-			fmt.Printf("Migrating %d variables from vars.txt to encrypted vault...\n", len(vars))
-		}
-	}
-
-	// Create vault
-	if err := v.Save(passphrase, vars); err != nil {
-		return fmt.Errorf("creating vault: %w", err)
-	}
-
-	// Delete old vars.txt
-	if _, statErr := os.Stat(varsPath); statErr == nil {
-		if err := os.Remove(varsPath); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: could not delete vars.txt: %v\n", err)
-		}
-	}
-
-	// Cache for current process
-	vault.CachePassphrase(passphrase)
-
 	if err := ensureSquadronGitignored(); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not update .gitignore: %v\n", err)
+		return fmt.Errorf("updating .gitignore: %w", err)
 	}
-
-	fmt.Printf("Squadron initialized with %q vault provider. Secrets are now encrypted at rest.\n", provider.Name())
+	fmt.Println("Squadron runtime state initialized. Variables are managed in Command Center.")
 	return nil
 }
 
-// ensureSquadronGitignored adds `.squadron/` to the .gitignore at the current
-// working directory, creating the file if necessary. Runs unconditionally —
-// even if the project isn't a git repo yet, so the entry is in place once
-// it becomes one.
 func ensureSquadronGitignored() error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-
 	gitignorePath := filepath.Join(cwd, ".gitignore")
 	existing, err := os.ReadFile(gitignorePath)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-
 	if gitignoreContains(existing, ".squadron") {
 		return nil
 	}
-
 	var buf strings.Builder
 	if len(existing) > 0 {
 		buf.Write(existing)
@@ -183,28 +71,16 @@ func ensureSquadronGitignored() error {
 		}
 	}
 	buf.WriteString(".squadron/\n")
-
-	if err := os.WriteFile(gitignorePath, []byte(buf.String()), 0644); err != nil {
-		return err
-	}
-	if len(existing) == 0 {
-		fmt.Println("Created .gitignore with .squadron/ entry.")
-	} else {
-		fmt.Println("Added .squadron/ to .gitignore.")
-	}
-	return nil
+	return os.WriteFile(gitignorePath, []byte(buf.String()), 0644)
 }
 
-// gitignoreContains checks whether any non-comment line in data matches the
-// .squadron entry in any common form (.squadron, .squadron/, /.squadron, etc.).
 func gitignoreContains(data []byte, entry string) bool {
 	for _, raw := range strings.Split(string(data), "\n") {
 		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		line = strings.TrimPrefix(line, "/")
-		line = strings.TrimSuffix(line, "/")
+		line = strings.TrimPrefix(strings.TrimSuffix(line, "/"), "/")
 		if line == entry {
 			return true
 		}
@@ -212,26 +88,26 @@ func gitignoreContains(data []byte, entry string) bool {
 	return false
 }
 
-// EnsureInitialized checks that squadron has been initialized.
-// If autoInit is true, runs init automatically.
-func EnsureInitialized(autoInit bool) error {
-	if config.IsVaultInitialized() {
-		return nil
-	}
+// EnsureInitialized preserves the existing CLI contract while initialization
+// now only creates local runtime state. It never creates variable storage.
+func EnsureInitialized(_ bool) error { return paths.EnsureHome() }
 
-	if !autoInit {
-		return fmt.Errorf("squadron not initialized. Run 'squadron init' (or 'squadron quickstart' for guided setup), or pass --init")
-	}
-
-	fmt.Println("Auto-initializing Squadron...")
-	return RunInit("", vault.ProviderFile)
-}
-
-// promptYesNo asks a yes/no question on stdin; default is no.
 func promptYesNo(question string) bool {
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Printf("%s [y/N]: ", question)
 	answer, _ := reader.ReadString('\n')
 	answer = strings.TrimSpace(strings.ToLower(answer))
 	return answer == "y" || answer == "yes"
+}
+
+func promptSecret(reader *bufio.Reader, prompt string) (string, error) {
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		fmt.Printf("%s: ", prompt)
+		value, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Println()
+		return strings.TrimSpace(string(value)), err
+	}
+	fmt.Printf("%s: ", prompt)
+	value, err := reader.ReadString('\n')
+	return strings.TrimSpace(value), err
 }

@@ -61,7 +61,7 @@ var _ = Describe("RunLoginFlow", func() {
 
 	It("closes the source on all exit paths", func() {
 		// Prepare succeeds, but discovery will fail (no real server) — Close should still run.
-		initTestVault()
+		resetRuntimeTokens()
 		source := &mockCallbackSource{redirectURI: "http://127.0.0.1:9999/callback"}
 		// Use a short timeout so the HTTP call to the fake server fails fast.
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

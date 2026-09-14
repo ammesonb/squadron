@@ -13,7 +13,7 @@ if ! is_mounted /config; then
   echo "Error: /config is not mounted. Mount your config directory:" >&2
   echo "  docker run -v /path/to/config:/config ..." >&2
   echo "" >&2
-  echo "State (vault, plugins, db) lives in /config/.squadron/" >&2
+  echo "Local runtime state (plugins and database) lives in /config/.squadron/" >&2
   exit 1
 fi
 

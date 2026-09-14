@@ -9,7 +9,7 @@ A **declarative agent framework** is one where you describe the *what* of a mult
 
 The alternative is an **imperative** framework, where you write orchestration code by hand: Python loops, conditional branches, retry decorators, state checkpointing. Most agent frameworks today are imperative: LangGraph, CrewAI, AutoGen, Semantic Kernel, AutoChain. You write code that *runs*; the framework provides primitives.
 
-[Squadron](/) is the canonical declarative agent framework: agents, tools, models, missions, schedules, budgets, and routing are all HCL config, and the entire runtime lives in a single Go binary.
+[Squadron](/) is a declarative agent framework: agents, tools, models, missions, budgets, and routing are HCL config, while operational state such as schedules and access control is managed by the Squadron product.
 
 ## What "declarative" means here
 
@@ -86,6 +86,6 @@ Squadron satisfies all nine. Compare against [LangGraph](/compare/langgraph), [C
 ## See also
 
 - [What is Squadron?](/) — the introductory page
-- [The Harness](/missions/harness) — the runtime model behind Squadron's declarative workflows
-- [Missions overview](/missions/overview) — every block, every field
+- [The Harness](/config/missions/harness) — the runtime model behind Squadron's declarative workflows
+- [Missions overview](/config/missions/overview) — every block, every field
 - [FAQ](/faq) — pricing, providers, deployment, and more

@@ -2,14 +2,13 @@ package oauth_test
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"squadron/config/vault"
 	"squadron/internal/paths"
+	"squadron/mcp/oauth"
 )
 
 var origDir string
@@ -30,17 +29,11 @@ var _ = AfterSuite(func() {
 	paths.ResetHome()
 })
 
-// initTestVault changes into a temp dir with a .squadron/ subdirectory and
-// bootstraps an empty encrypted vault so kvstore operations work. Uses the
-// fallback passphrase to avoid keyring interaction.
-func initTestVault() string {
+// resetRuntimeTokens isolates the process-local OAuth key space between tests.
+func resetRuntimeTokens() string {
 	dir := GinkgoT().TempDir()
-	sqDir := filepath.Join(dir, ".squadron")
-	Expect(os.MkdirAll(sqDir, 0700)).To(Succeed())
 	Expect(os.Chdir(dir)).To(Succeed())
 	paths.ResetHome()
-
-	v := vault.Open(filepath.Join(sqDir, "vars.vault"))
-	Expect(v.Save([]byte(vault.FallbackPassphrase), map[string]string{})).To(Succeed())
+	oauth.ClearRuntimeState()
 	return dir
 }

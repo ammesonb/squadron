@@ -12,11 +12,11 @@ import (
 	"squadron/mcp/oauth"
 )
 
-var _ = Describe("VaultTokenStore", func() {
-	BeforeEach(func() { initTestVault() })
+var _ = Describe("RuntimeTokenStore", func() {
+	BeforeEach(func() { resetRuntimeTokens() })
 
 	It("round-trips a token through Save and Get", func() {
-		store := oauth.NewVaultTokenStore("test-server")
+		store := oauth.NewRuntimeTokenStore("test-server")
 
 		tok := &transport.Token{
 			AccessToken:  "access-123",
@@ -34,18 +34,18 @@ var _ = Describe("VaultTokenStore", func() {
 	})
 
 	It("returns ErrNoToken when no token is stored", func() {
-		store := oauth.NewVaultTokenStore("nonexistent")
+		store := oauth.NewRuntimeTokenStore("nonexistent")
 		_, err := store.GetToken(context.Background())
 		Expect(err).To(MatchError(transport.ErrNoToken))
 	})
 
 	It("rejects a nil token on Save", func() {
-		store := oauth.NewVaultTokenStore("test-server")
+		store := oauth.NewRuntimeTokenStore("test-server")
 		Expect(store.SaveToken(context.Background(), nil)).To(HaveOccurred())
 	})
 
 	It("preserves ExpiresAt when already set", func() {
-		store := oauth.NewVaultTokenStore("test-server")
+		store := oauth.NewRuntimeTokenStore("test-server")
 		fixed := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
 		tok := &transport.Token{
 			AccessToken: "a",
@@ -62,17 +62,17 @@ var _ = Describe("VaultTokenStore", func() {
 	It("respects context cancellation on GetToken", func() {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		store := oauth.NewVaultTokenStore("test-server")
+		store := oauth.NewRuntimeTokenStore("test-server")
 		_, err := store.GetToken(ctx)
 		Expect(err).To(MatchError(context.Canceled))
 	})
 })
 
 var _ = Describe("DeleteToken", func() {
-	BeforeEach(func() { initTestVault() })
+	BeforeEach(func() { resetRuntimeTokens() })
 
 	It("removes a stored token", func() {
-		store := oauth.NewVaultTokenStore("del-test")
+		store := oauth.NewRuntimeTokenStore("del-test")
 		Expect(store.SaveToken(context.Background(), &transport.Token{AccessToken: "x"})).To(Succeed())
 		Expect(oauth.HasToken("del-test")).To(BeTrue())
 
@@ -86,7 +86,7 @@ var _ = Describe("DeleteToken", func() {
 })
 
 var _ = Describe("ClientCredentials", func() {
-	BeforeEach(func() { initTestVault() })
+	BeforeEach(func() { resetRuntimeTokens() })
 
 	It("round-trips Save and Load", func() {
 		creds := oauth.ClientCredentials{ClientID: "cid-1", ClientSecret: "sec-1"}
@@ -107,30 +107,30 @@ var _ = Describe("ClientCredentials", func() {
 })
 
 var _ = Describe("HasToken", func() {
-	BeforeEach(func() { initTestVault() })
+	BeforeEach(func() { resetRuntimeTokens() })
 
 	It("returns false when no token exists", func() {
 		Expect(oauth.HasToken("nope")).To(BeFalse())
 	})
 
 	It("returns true after a token is saved", func() {
-		store := oauth.NewVaultTokenStore("ht-test")
+		store := oauth.NewRuntimeTokenStore("ht-test")
 		Expect(store.SaveToken(context.Background(), &transport.Token{AccessToken: "x"})).To(Succeed())
 		Expect(oauth.HasToken("ht-test")).To(BeTrue())
 	})
 })
 
-var _ = Describe("VaultSnapshot", func() {
-	BeforeEach(func() { initTestVault() })
+var _ = Describe("TokenSnapshot", func() {
+	BeforeEach(func() { resetRuntimeTokens() })
 
 	It("sees tokens stored before the snapshot was taken", func() {
-		store := oauth.NewVaultTokenStore("snap-test")
+		store := oauth.NewRuntimeTokenStore("snap-test")
 		Expect(store.SaveToken(context.Background(), &transport.Token{
 			AccessToken: "snap-tok",
 			ExpiresAt:   time.Now().Add(time.Hour),
 		})).To(Succeed())
 
-		snap, err := oauth.LoadVaultSnapshot()
+		snap, err := oauth.LoadTokenSnapshot()
 		Expect(err).NotTo(HaveOccurred())
 		Expect(snap.HasToken("snap-test")).To(BeTrue())
 
@@ -140,17 +140,17 @@ var _ = Describe("VaultSnapshot", func() {
 	})
 
 	It("does not see tokens stored after the snapshot", func() {
-		snap, err := oauth.LoadVaultSnapshot()
+		snap, err := oauth.LoadTokenSnapshot()
 		Expect(err).NotTo(HaveOccurred())
 
-		store := oauth.NewVaultTokenStore("late-write")
+		store := oauth.NewRuntimeTokenStore("late-write")
 		Expect(store.SaveToken(context.Background(), &transport.Token{AccessToken: "new"})).To(Succeed())
 
 		Expect(snap.HasToken("late-write")).To(BeFalse())
 	})
 
 	It("returns ErrNoToken for a missing server", func() {
-		snap, err := oauth.LoadVaultSnapshot()
+		snap, err := oauth.LoadTokenSnapshot()
 		Expect(err).NotTo(HaveOccurred())
 		_, err = snap.Token("nope")
 		Expect(err).To(MatchError(transport.ErrNoToken))

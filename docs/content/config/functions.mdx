@@ -38,7 +38,7 @@ After resolution:
 - Any `..` traversal that escapes the project root is rejected (`escapes the project root <path>`).
 - A path that resolves to the project root itself is rejected (`resolves to the project root <path> itself`).
 
-The same rule applies to `packet.path` and `plugin.source` — see [Plugins → Path Resolution](./plugins#path-resolution) and [Packets → Path Resolution](../missions/packets) for the block-attribute variants (those add per-HCL-file-dir anchoring for the relative forms, since blocks know which file declared them).
+The same rule applies to `packet.path` and `plugin.source` — see [Plugins → Path Resolution](./plugins#path-resolution) and [Packets → Path Resolution](./missions/packets) for the block-attribute variants (those add per-HCL-file-dir anchoring for the relative forms, since blocks know which file declared them).
 
 ### Supported File Types
 
@@ -154,7 +154,7 @@ inputs = {
 }
 ```
 
-See [File Inputs](/missions/overview#file-inputs) for the supply forms and
+See [File Inputs](/config/missions/overview#file-inputs) for the supply forms and
 runtime behavior.
 
 ## Type References
@@ -221,7 +221,7 @@ mission "report" {
 }
 ```
 
-See [Missions](/missions/overview) for full mission configuration.
+See [Missions](/config/missions/overview) for full mission configuration.
 
 ### Task Outputs
 
@@ -237,7 +237,7 @@ task "analyze" {
 }
 ```
 
-See [Tasks](/missions/tasks) for full task configuration.
+See [Tasks](/config/missions/tasks) for full task configuration.
 
 ### Dataset Schemas
 
@@ -254,7 +254,7 @@ dataset "orders" {
 }
 ```
 
-See [Datasets](/missions/datasets) for full dataset configuration.
+See [Datasets](/config/missions/datasets) for full dataset configuration.
 
 ## Full Example
 

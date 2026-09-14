@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -35,13 +36,14 @@ type runningMission struct {
 
 // Client manages the WebSocket connection from a squadron instance to commander.
 type Client struct {
-	cfg      *config.Config // may be partial until full load succeeds
-	cfgReady bool          // true when config is fully loaded and validated
-	cfgError string        // non-empty when config failed to load
-	cfgMu    sync.RWMutex
-	configPath string
-	stores     *store.Bundle
-	version    string
+	cfg              *config.Config // may be partial until full load succeeds
+	cfgReady         bool           // true when config is fully loaded and validated
+	cfgError         string         // non-empty when config failed to load
+	cfgMu            sync.RWMutex
+	configPath       string
+	stores           *store.Bundle
+	version          string
+	workerCredential string
 
 	// connMu guards the per-connection handles (ws/done/connQuit) so a
 	// reconnect can atomically tear down the previous connection's pumps
@@ -63,8 +65,10 @@ type Client struct {
 	handlers map[protocol.MessageType]RequestHandler
 
 	// Active chat sessions
-	chatMu       sync.Mutex
-	chatSessions map[string]*chatSession // sessionID → session
+	chatMu         sync.Mutex
+	chatSessions   map[string]*chatSession // sessionID → session
+	conversationMu sync.Mutex
+	conversations  map[string]*agentConversation
 
 	// Running missions (for stop/cancel)
 	missionMu       sync.Mutex
@@ -122,26 +126,30 @@ type RequestHandler func(env *protocol.Envelope) (*protocol.Envelope, error)
 // NewClient creates a wsbridge client. cfgReady=false means partial
 // config (vars/plugins only) and cfgError carries the load failure.
 // Wire human-input notifier after construction via SetHumanInputNotifier.
-func NewClient(cfg *config.Config, cfgReady bool, cfgError string, configPath string, stores *store.Bundle, version string) *Client {
+func NewClient(cfg *config.Config, cfgReady bool, cfgError string, configPath string, stores *store.Bundle, version string, workerCredentials ...string) *Client {
 	ctx, stop := context.WithCancel(context.Background())
 	c := &Client{
-		cfg:        cfg,
-		cfgReady:   cfgReady,
-		cfgError:   cfgError,
-		configPath: configPath,
-		stores:     stores,
-		version:    version,
-		send:         make(chan []byte, 256),
-		pending:      make(map[string]chan *protocol.Envelope),
-		handlers:     make(map[protocol.MessageType]RequestHandler),
+		cfg:             cfg,
+		cfgReady:        cfgReady,
+		cfgError:        cfgError,
+		configPath:      configPath,
+		stores:          stores,
+		version:         version,
+		send:            make(chan []byte, 256),
+		pending:         make(map[string]chan *protocol.Envelope),
+		handlers:        make(map[protocol.MessageType]RequestHandler),
 		chatSessions:    make(map[string]*chatSession),
+		conversations:   make(map[string]*agentConversation),
 		runningMissions: make(map[string]*runningMission),
 		subscriptions:   NewSubscriptionManager(),
 		concurrency:     noopConcurrency{},
 		humanInputs:     newHumanInputListeners(),
-		done:         make(chan struct{}),
-		ctx:        ctx,
-		stop:       stop,
+		done:            make(chan struct{}),
+		ctx:             ctx,
+		stop:            stop,
+	}
+	if len(workerCredentials) > 0 {
+		c.workerCredential = workerCredentials[0]
 	}
 	c.registerHandlers()
 	return c
@@ -182,9 +190,9 @@ func (c *Client) HumanInputListener() humaninput.Listener {
 }
 
 // ConnectTo dials a specific command center URL, registers, and starts read/write pumps.
-// Used when the URL is known independently of config (e.g., local command center).
+// It is retained for callers that supply a URL outside the worker profile.
 func (c *Client) ConnectTo(commanderURL string) error {
-	return c.connectToURL(commanderURL)
+	return c.connectToURL(commanderURL, "")
 }
 
 // Connect dials the command center WebSocket endpoint from config, registers, and starts read/write pumps.
@@ -193,11 +201,15 @@ func (c *Client) Connect() error {
 	if cfg == nil || cfg.CommandCenter == nil {
 		return fmt.Errorf("config not loaded")
 	}
-	return c.connectToURL(cfg.CommandCenter.URL)
+	return c.connectToURL(cfg.CommandCenter.URL, c.workerCredential)
 }
 
-func (c *Client) connectToURL(url string) error {
-	ws, _, err := websocket.DefaultDialer.Dial(url, nil)
+func (c *Client) connectToURL(url, workerCredential string) error {
+	headers := make(http.Header)
+	if workerCredential != "" {
+		headers.Set("Authorization", "Bearer "+workerCredential)
+	}
+	ws, _, err := websocket.DefaultDialer.Dial(url, headers)
 	if err != nil {
 		return fmt.Errorf("dial command center: %w", err)
 	}
@@ -226,16 +238,17 @@ func (c *Client) connectToURL(url string) error {
 	// them to send/receive messages.
 	go c.readPump(ws, done)
 	go c.writePump(ws, quit)
+	c.connected = true
 
 	// Register with commander. If registration fails, tear down just the
 	// socket — do NOT call Close(), which would cancel c.ctx and prevent
 	// any future reconnect attempts on this client.
 	if err := c.register(); err != nil {
+		c.connected = false
 		ws.Close()
 		return fmt.Errorf("register: %w", err)
 	}
 
-	c.connected = true
 	return nil
 }
 
@@ -282,6 +295,7 @@ func (c *Client) SetConcurrencyTracker(ct ConcurrencyTracker) {
 func (c *Client) Close() {
 	c.connected = false
 	c.stop()
+	c.closeConversations()
 	c.connMu.Lock()
 	if c.connQuit != nil {
 		close(c.connQuit)
@@ -355,6 +369,11 @@ func (c *Client) ReloadConfig() error {
 	c.cfgMu.Lock()
 	oldCfg := c.cfg
 	wasReady := c.cfgReady
+	if oldCfg != nil && oldCfg.CommandCenter != nil {
+		// Command Center credentials are owned by the local worker profile,
+		// not the project HCL that was just reloaded.
+		newCfg.CommandCenter = oldCfg.CommandCenter
+	}
 	c.cfg = newCfg
 	c.cfgReady = true
 	c.cfgError = ""
@@ -510,19 +529,17 @@ func (c *Client) dispatch(env *protocol.Envelope) {
 
 	// Handlers that work without a loaded config
 	configFreeHandlers := map[protocol.MessageType]bool{
-		protocol.TypeReloadConfig:       true,
-		protocol.TypeGetConfig:          true,
-		protocol.TypeSetVariable:        true,
-		protocol.TypeDeleteVariable:     true,
-		protocol.TypeGetVariables:       true,
-		protocol.TypeListConfigFiles:    true,
-		protocol.TypeGetConfigFile:      true,
-		protocol.TypeWriteConfigFile:    true,
-		protocol.TypeValidateConfig:     true,
+		protocol.TypeReloadConfig:    true,
+		protocol.TypeGetConfig:       true,
+		"sync_variables":             true,
+		protocol.TypeListConfigFiles: true,
+		protocol.TypeGetConfigFile:   true,
+		protocol.TypeWriteConfigFile: true,
+		protocol.TypeValidateConfig:  true,
 		// Human-in-the-loop endpoints operate purely against the
 		// store, which exists independently of the HCL config.
-		protocol.TypeGetHumanInputs:     true,
-		protocol.TypeResolveHumanInput:  true,
+		protocol.TypeGetHumanInputs:    true,
+		protocol.TypeResolveHumanInput: true,
 	}
 
 	// Handle incoming requests from commander

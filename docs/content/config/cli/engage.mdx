@@ -1,0 +1,72 @@
+---
+title: engage
+---
+
+# squadron engage
+
+Start the Squadron worker for the current project and connect it to its assigned workspace in the shared Squadron product.
+
+## Usage
+
+```bash
+squadron engage [flags]
+```
+
+Run `engage` from the root of the Squadron project. The configuration path determines both the HCL files that are loaded and the `.squadron/` directory used for local runtime state.
+
+## First connection
+
+On the first interactive run, Squadron asks for the product WebSocket URL and runner credential. Obtain both from the workspace's connection details. Squadron stores them in `.squadron/command-center.json` with owner-only permissions.
+
+The worker credential is deliberately not part of HCL. It identifies the machine connection to one workspace and should not be committed to a repository.
+
+## What Engage does
+
+1. Validates the project directory.
+2. Runs the quickstart wizard when the directory has no HCL.
+3. Collects or loads the workspace connection profile.
+4. Opens the worker connection and receives workspace variables from Command Center.
+5. Loads and validates the full configuration.
+6. Forks into the background unless `--foreground` is used.
+7. Installs a user-level system service so the worker starts after reboot.
+
+The worker continually reconnects when the shared deployment is temporarily unavailable. Mission execution state and configuration remain local to the worker; time-based schedules are stored and dispatched by the Squadron product.
+
+## Flags
+
+| Flag | Description |
+|---|---|
+| `-c, --config` | Project configuration file or directory. Defaults to `.`. |
+| `-r, --reload` | Reload an already-running worker. Starts it when it is not running. |
+| `--foreground` | Run in the current terminal instead of forking. |
+| `--init` | Initialize Squadron automatically when necessary. |
+| `--headless` | Deprecated compatibility flag. Workers always connect to the shared product. |
+| `--cc-port` | Deprecated compatibility flag. The product is deployed independently. |
+
+## Reload configuration
+
+```bash
+squadron engage --reload
+```
+
+Squadron validates and loads the updated HCL in the running worker. In-flight missions and sessions continue using the configuration snapshot with which they started.
+
+## Stop the worker
+
+From the same project directory:
+
+```bash
+squadron disengage
+```
+
+This stops the process and removes its system service. See [disengage](/config/cli/disengage).
+
+## Container use
+
+Containers run Engage in the foreground automatically. Mount the project and its protected `.squadron` state so the connection profile and mission store survive restarts. Workspace variables remain in Command Center.
+
+## See also
+
+- [Setup and Workspaces](/product/setup)
+- [Workspace Connection](/config/command_center)
+- [Configuration Overview](/config/overview)

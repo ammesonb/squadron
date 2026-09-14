@@ -22,6 +22,9 @@ import (
 )
 
 func (c *Client) registerHandlers() {
+	c.handlers["agent_conversation"] = c.handleAgentConversation
+	c.handlers["get_agent_definition"] = c.handleAgentDefinition
+	c.handlers["get_mission_definition"] = c.handleMissionDefinition
 	c.handlers[protocol.TypeGetConfig] = c.handleGetConfig
 	c.handlers[protocol.TypeRunMission] = c.handleRunMission
 	c.handlers[protocol.TypeStopMission] = c.handleStopMission
@@ -39,6 +42,8 @@ func (c *Client) registerHandlers() {
 	c.handlers[protocol.TypeGetDatasetItems] = c.handleGetDatasetItems
 	c.handlers[protocol.TypeListConfigFiles] = c.handleListConfigFiles
 	c.handlers[protocol.TypeGetConfigFile] = c.handleGetConfigFile
+	c.handlers[typeListLocalPluginFiles] = c.handleListLocalPluginFiles
+	c.handlers[typeGetLocalPluginFile] = c.handleGetLocalPluginFile
 	c.handlers[protocol.TypeWriteConfigFile] = c.handleWriteConfigFile
 	c.handlers[protocol.TypeValidateConfig] = c.handleValidateConfig
 	c.handlers[protocol.TypeListSharedFolders] = c.handleListSharedFolders
@@ -47,14 +52,35 @@ func (c *Client) registerHandlers() {
 	c.handlers[protocol.TypeWriteBrowseFile] = c.handleWriteBrowseFile
 	c.handlers[protocol.TypeDownloadFile] = c.handleDownloadFile
 	c.handlers[protocol.TypeDownloadDirectory] = c.handleDownloadDirectory
-	c.handlers[protocol.TypeGetVariables] = c.handleGetVariables
-	c.handlers[protocol.TypeSetVariable] = c.handleSetVariable
-	c.handlers[protocol.TypeDeleteVariable] = c.handleDeleteVariable
 	c.handlers[protocol.TypeGetCostSummary] = c.handleGetCostSummary
 	c.handlers[protocol.TypeSubscribe] = c.handleSubscribe
 	c.handlers[protocol.TypeUnsubscribe] = c.handleUnsubscribe
 	c.handlers[protocol.TypeGetHumanInputs] = c.handleGetHumanInputs
 	c.handlers[protocol.TypeResolveHumanInput] = c.handleResolveHumanInput
+	c.handlers["sync_variables"] = c.handleSyncVariables
+}
+
+type syncVariablesPayload struct {
+	Values map[string]string `json:"values"`
+}
+
+func (c *Client) handleSyncVariables(env *protocol.Envelope) (*protocol.Envelope, error) {
+	var payload syncVariablesPayload
+	if err := protocol.DecodePayload(env, &payload); err != nil {
+		return nil, fmt.Errorf("decode sync_variables: %w", err)
+	}
+
+	config.ReplaceRuntimeVars(payload.Values)
+	if err := c.ReloadConfig(); err != nil {
+		c.cfgMu.Lock()
+		c.cfgReady = false
+		c.cfgError = err.Error()
+		c.cfgMu.Unlock()
+		c.NotifyConfigReloaded(err)
+		return nil, nil
+	}
+	c.NotifyConfigReloaded(nil)
+	return nil, nil
 }
 
 func (c *Client) handleReloadConfig(env *protocol.Envelope) (*protocol.Envelope, error) {
@@ -104,15 +130,6 @@ func (c *Client) handleRunMission(env *protocol.Envelope) (*protocol.Envelope, e
 	// Check concurrency limit
 	if !c.concurrency.NotifyMissionStarted(payload.MissionName) {
 		reason := fmt.Sprintf("mission %q is at max parallel capacity (%d)", payload.MissionName, missionCfg.MaxParallel)
-		skipEnv, _ := protocol.NewEvent(protocol.TypeMissionEvent, &protocol.MissionEventPayload{
-			EventType: protocol.EventScheduleSkip,
-			Data: protocol.ScheduleSkipData{
-				MissionName: payload.MissionName,
-				Source:      "manual",
-				Reason:      reason,
-			},
-		})
-		c.SendEvent(skipEnv)
 		return protocol.NewResponse(env.RequestID, protocol.TypeRunMissionAck, &protocol.RunMissionAckPayload{
 			Accepted: false,
 			Reason:   reason,
@@ -508,6 +525,34 @@ func (c *Client) handleGetTaskDetail(env *protocol.Envelope) (*protocol.Envelope
 		sessionInfos[i] = dto
 	}
 
+	// Rebuild the explicit tool-call -> media association from structured
+	// session parts. Media is intentionally not inferred from event timing or
+	// neighboring assistant messages.
+	toolMedia := make(map[string][]protocol.ToolMediaDTO)
+	for _, session := range sessions {
+		messages, err := c.stores.Sessions.GetStructuredMessages(session.ID)
+		if err != nil {
+			log.Printf("[wsbridge] structured messages unavailable for session %s: %v", session.ID, err)
+			continue
+		}
+		for _, message := range messages {
+			for _, part := range message.Parts {
+				var media protocol.ToolMediaDTO
+				switch part.Type {
+				case store.PartTypeToolImage:
+					media = protocol.ToolMediaDTO{Kind: "image", MediaType: part.ImageMediaType, Data: part.ImageData}
+				case store.PartTypeToolDocument:
+					media = protocol.ToolMediaDTO{Kind: "document", MediaType: part.DocumentMediaType, Data: part.DocumentData, Filename: part.DocumentFilename}
+				default:
+					continue
+				}
+				if part.ToolUseID != "" {
+					toolMedia[session.ID+"\x00"+part.ToolUseID] = append(toolMedia[session.ID+"\x00"+part.ToolUseID], media)
+				}
+			}
+		}
+	}
+
 	// Get tool results
 	toolResults, err := c.stores.Sessions.GetToolResultsByTask(payload.TaskID)
 	if err != nil {
@@ -522,6 +567,7 @@ func (c *Client) handleGetTaskDetail(env *protocol.Envelope) (*protocol.Envelope
 			ToolName:    tr.ToolName,
 			InputParams: tr.InputParams,
 			Output:      tr.RawData,
+			Media:       toolMedia[tr.SessionID+"\x00"+tr.ToolCallId],
 			StartedAt:   tr.StartedAt.UTC().Format("2006-01-02T15:04:05.000Z"),
 			FinishedAt:  tr.FinishedAt.UTC().Format("2006-01-02T15:04:05.000Z"),
 		}
@@ -712,6 +758,9 @@ func (c *Client) handleGetChatHistory(env *protocol.Envelope) (*protocol.Envelop
 	if err := protocol.DecodePayload(env, &payload); err != nil {
 		return nil, fmt.Errorf("decode get_chat_history: %w", err)
 	}
+	if strings.HasPrefix(payload.AgentName, "cc_conversation:") {
+		return nil, fmt.Errorf("use the scoped conversation API")
+	}
 
 	limit := payload.Limit
 	if limit <= 0 {
@@ -750,6 +799,9 @@ func (c *Client) handleGetChatMessages(env *protocol.Envelope) (*protocol.Envelo
 	if err != nil {
 		return nil, fmt.Errorf("get messages: %w", err)
 	}
+	if len(msgs) > 0 && isConversationMetadata(msgs[0].Content) {
+		return nil, fmt.Errorf("use the scoped conversation API")
+	}
 
 	var messages []protocol.ChatMessageInfo
 	for _, m := range msgs {
@@ -770,6 +822,13 @@ func (c *Client) handleArchiveChat(env *protocol.Envelope) (*protocol.Envelope, 
 	var payload protocol.ArchiveChatPayload
 	if err := protocol.DecodePayload(env, &payload); err != nil {
 		return nil, fmt.Errorf("decode archive_chat: %w", err)
+	}
+	msgs, err := c.stores.Sessions.GetMessages(payload.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	if len(msgs) > 0 && isConversationMetadata(msgs[0].Content) {
+		return nil, fmt.Errorf("use the scoped conversation API")
 	}
 
 	c.stores.Sessions.CompleteSession(payload.SessionID, nil)
@@ -1098,143 +1157,6 @@ func (c *Client) handleWriteConfigFile(env *protocol.Envelope) (*protocol.Envelo
 	})
 }
 
-// =============================================================================
-// Variable operations
-// =============================================================================
-
-func maskSecret(value string) string {
-	if len(value) <= 4 {
-		return strings.Repeat("•", len(value))
-	}
-	return value[:4] + "••••"
-}
-
-func (c *Client) handleGetVariables(env *protocol.Envelope) (*protocol.Envelope, error) {
-	cfg := c.getConfig()
-
-	fileVars, err := config.LoadVarsFromFile()
-	if err != nil {
-		return protocol.NewResponse(env.RequestID, protocol.TypeError, &protocol.ErrorPayload{
-			Code:    "vars_load_error",
-			Message: err.Error(),
-		})
-	}
-
-	var cfgVars []config.Variable
-	if cfg != nil {
-		cfgVars = cfg.Variables
-	}
-	declared := make(map[string]struct{}, len(cfgVars))
-	details := make([]protocol.VariableDetail, 0, len(cfgVars)+len(fileVars))
-	for _, v := range cfgVars {
-		declared[v.Name] = struct{}{}
-		detail := protocol.VariableDetail{
-			Name:   v.Name,
-			Secret: v.Secret,
-		}
-
-		if fileVal, ok := fileVars[v.Name]; ok {
-			detail.HasValue = true
-			detail.Source = "override"
-			if v.Secret {
-				detail.Value = maskSecret(fileVal)
-			} else {
-				detail.Value = fileVal
-			}
-		} else if v.Default != "" {
-			detail.HasValue = true
-			detail.Source = "default"
-			detail.Default = v.Default
-			if v.Secret {
-				detail.Value = maskSecret(v.Default)
-			} else {
-				detail.Value = v.Default
-			}
-		} else {
-			detail.Source = "unset"
-		}
-
-		details = append(details, detail)
-	}
-
-	// Surface vault keys that have no `variable` block. With no declared
-	// `secret = true`, treat them like any other non-secret value and show
-	// the full content — declaring a `variable` block is the opt-in for
-	// masking.
-	for name, val := range fileVars {
-		if _, ok := declared[name]; ok {
-			continue
-		}
-		details = append(details, protocol.VariableDetail{
-			Name:     name,
-			Secret:   false,
-			HasValue: true,
-			Source:   "override",
-			Value:    val,
-		})
-	}
-
-	return protocol.NewResponse(env.RequestID, protocol.TypeGetVariablesResult, &protocol.GetVariablesResultPayload{
-		Variables: details,
-	})
-}
-
-func (c *Client) handleSetVariable(env *protocol.Envelope) (*protocol.Envelope, error) {
-	var payload protocol.SetVariablePayload
-	if err := protocol.DecodePayload(env, &payload); err != nil {
-		return protocol.NewResponse(env.RequestID, protocol.TypeSetVariableResult, &protocol.SetVariableResultPayload{
-			Error: "invalid payload: " + err.Error(),
-		})
-	}
-
-	if err := config.SetVar(payload.Name, payload.Value); err != nil {
-		return protocol.NewResponse(env.RequestID, protocol.TypeSetVariableResult, &protocol.SetVariableResultPayload{
-			Error: err.Error(),
-		})
-	}
-
-	_ = c.ReloadConfig()
-
-	result := &protocol.SetVariableResultPayload{Success: true}
-	result.ConfigReady = c.HasConfig()
-	c.cfgMu.RLock()
-	result.ConfigError = c.cfgError
-	c.cfgMu.RUnlock()
-	if c.HasConfig() {
-		ic := ConfigToInstanceConfig(c.getConfig())
-		result.Config = &ic
-	}
-	return protocol.NewResponse(env.RequestID, protocol.TypeSetVariableResult, result)
-}
-
-func (c *Client) handleDeleteVariable(env *protocol.Envelope) (*protocol.Envelope, error) {
-	var payload protocol.DeleteVariablePayload
-	if err := protocol.DecodePayload(env, &payload); err != nil {
-		return protocol.NewResponse(env.RequestID, protocol.TypeDeleteVariableResult, &protocol.DeleteVariableResultPayload{
-			Error: "invalid payload: " + err.Error(),
-		})
-	}
-
-	if err := config.DeleteVar(payload.Name); err != nil {
-		return protocol.NewResponse(env.RequestID, protocol.TypeDeleteVariableResult, &protocol.DeleteVariableResultPayload{
-			Error: err.Error(),
-		})
-	}
-
-	_ = c.ReloadConfig()
-
-	result := &protocol.DeleteVariableResultPayload{Success: true}
-	result.ConfigReady = c.HasConfig()
-	c.cfgMu.RLock()
-	result.ConfigError = c.cfgError
-	c.cfgMu.RUnlock()
-	if c.HasConfig() {
-		ic := ConfigToInstanceConfig(c.getConfig())
-		result.Config = &ic
-	}
-	return protocol.NewResponse(env.RequestID, protocol.TypeDeleteVariableResult, result)
-}
-
 // runMissionChain runs a mission and, if it routes to another mission, chains into that mission.
 func (c *Client) runMissionChain(ctx context.Context, cancel context.CancelFunc, runner *mission.Runner, storingHandler *streamers.StoringMissionHandler, wsHandler *WSMissionHandler, missionName string) {
 	for {
@@ -1330,7 +1252,6 @@ func (c *Client) runMissionChain(ctx context.Context, cancel context.CancelFunc,
 	}
 }
 
-// RunScheduledMission is called by the scheduler when a schedule fires.
 // ResumeOrphanedMissions finds missions stuck in "running" status (from a crash/kill)
 // and auto-resumes them. Called once on startup after config is loaded.
 func (c *Client) ResumeOrphanedMissions() {
@@ -1393,62 +1314,6 @@ func (c *Client) ResumeOrphanedMissions() {
 		c.runningMissions[r.ID] = &runningMission{cancel: missionCancel, drain: runner.Drain}
 		c.missionMu.Unlock()
 	}
-}
-
-// It creates a mission runner and runs it in the background, reusing the
-// same flow as handleRunMission but without a WebSocket request/response.
-func (c *Client) RunScheduledMission(missionName, source string, inputs map[string]string) {
-	cfg := c.getConfig()
-	if cfg == nil {
-		log.Printf("scheduler: cannot run %q (%s): config not loaded", missionName, source)
-		return
-	}
-
-	// Check concurrency via scheduler
-	if !c.concurrency.NotifyMissionStarted(missionName) {
-		reason := fmt.Sprintf("mission %q at capacity, skipping %s", missionName, source)
-		log.Printf("scheduler: %s", reason)
-		skipEnv, _ := protocol.NewEvent(protocol.TypeMissionEvent, &protocol.MissionEventPayload{
-			EventType: protocol.EventScheduleSkip,
-			Data: protocol.ScheduleSkipData{
-				MissionName: missionName,
-				Source:      source,
-				Reason:      reason,
-			},
-		})
-		c.SendEvent(skipEnv)
-		return
-	}
-
-	log.Printf("scheduler: starting mission %q (%s)", missionName, source)
-
-	debugLogger, _ := mission.NewDebugLogger("")
-	runner, err := mission.NewRunner(cfg, c.configPath, missionName, inputs, mission.WithDebugLogger(debugLogger), mission.WithHumanBridge(c), mission.WithGatewayBridge(c.gatewayBridge))
-	if err != nil {
-		log.Printf("scheduler: failed to create runner for %q: %v", missionName, err)
-		c.concurrency.NotifyMissionDone(missionName)
-		return
-	}
-
-	wsHandler := NewWSMissionHandler(c)
-	storingHandler := streamers.NewStoringMissionHandler(wsHandler, runner.EventStore(), runner.CostStore())
-
-	missionCtx, missionCancel := context.WithCancel(context.Background())
-	go func() {
-		// Wait for mission ID to track it
-		go func() {
-			mid, err := wsHandler.WaitForMissionID(30 * time.Second)
-			if err != nil {
-				log.Printf("scheduler: mission %q failed to start: %v", missionName, err)
-				return
-			}
-			c.missionMu.Lock()
-			c.runningMissions[mid] = &runningMission{cancel: missionCancel, drain: runner.Drain}
-			c.missionMu.Unlock()
-		}()
-
-		c.runMissionChain(missionCtx, missionCancel, runner, storingHandler, wsHandler, missionName)
-	}()
 }
 
 // RunMissionDirect starts a mission without going through the WebSocket protocol.

@@ -313,43 +313,43 @@ type Commander struct {
 	TaskName  string
 	ModelName string
 
-	session         *llm.Session
-	tools           map[string]aitools.Tool
-	provider        llm.Provider
-	ownsProvider    bool
-	agents          map[string]*config.Agent
-	callbacks       *CommanderToolCallbacks
-	configPath      string
-	cfg             *config.Config
-	resultStore     *aitools.MemoryResultStore
-	interceptor     *aitools.ResultInterceptor
-	completedAgents map[string]*completedAgent
-	agentSessions   map[string]*Agent // Persistent agent sessions by name (for multi-turn interaction)
-	debugLogger     DebugLogger
-	turnLogger      *llm.TurnLogger
-	queryClones     map[string]*Commander // Cached clones for ask_commander queries (keyed by target task name)
-	secretInfos     []SecretInfo           // Secret names and descriptions for agent prompts
-	secretValues    map[string]string      // Actual secret values for tool call injection
-	datasetCursor      *aitools.DatasetCursor      // Cursor for sequential dataset iteration (nil if not sequential)
-	submitOutput       *aitools.SubmitOutputTool   // Universal output submission tool
-	taskComplete       *aitools.TaskCompleteTool   // Tool to signal task completion
-	loopExitReason     string                     // Why the commander loop exited (for failure diagnostics)
-	noToolCallRetries  int                        // Count of consecutive no-tool-call retries
-	maxTokensRetries   int                        // Count of consecutive max_tokens truncation retries
-	sessionLogger      SessionLogger               // Session persistence (nil if not tracking)
-	sessionID          string                 // Store session ID (empty if not tracking)
-	agentSessionIDs    map[string]string      // Agent name → store session ID (for agent session tracking)
-	callbacksTaskID    string                 // Task ID from callbacks (for agent session creation)
-	callbacksMissionID string                 // Mission ID from callbacks (for mission-scoped tool plumbing)
-	iterationIndex     *int                   // Iteration index (nil for non-iterated tasks)
-	agentMgr           *AgentManager          // Manages agent lifecycle (creation, session, resume)
+	session            *llm.Session
+	tools              map[string]aitools.Tool
+	provider           llm.Provider
+	ownsProvider       bool
+	agents             map[string]*config.Agent
+	callbacks          *CommanderToolCallbacks
+	configPath         string
+	cfg                *config.Config
+	resultStore        *aitools.MemoryResultStore
+	interceptor        *aitools.ResultInterceptor
+	completedAgents    map[string]*completedAgent
+	agentSessions      map[string]*Agent // Persistent agent sessions by name (for multi-turn interaction)
+	debugLogger        DebugLogger
+	turnLogger         *llm.TurnLogger
+	queryClones        map[string]*Commander     // Cached clones for ask_commander queries (keyed by target task name)
+	secretInfos        []SecretInfo              // Secret names and descriptions for agent prompts
+	secretValues       map[string]string         // Actual secret values for tool call injection
+	datasetCursor      *aitools.DatasetCursor    // Cursor for sequential dataset iteration (nil if not sequential)
+	submitOutput       *aitools.SubmitOutputTool // Universal output submission tool
+	taskComplete       *aitools.TaskCompleteTool // Tool to signal task completion
+	loopExitReason     string                    // Why the commander loop exited (for failure diagnostics)
+	noToolCallRetries  int                       // Count of consecutive no-tool-call retries
+	maxTokensRetries   int                       // Count of consecutive max_tokens truncation retries
+	sessionLogger      SessionLogger             // Session persistence (nil if not tracking)
+	sessionID          string                    // Store session ID (empty if not tracking)
+	agentSessionIDs    map[string]string         // Agent name → store session ID (for agent session tracking)
+	callbacksTaskID    string                    // Task ID from callbacks (for agent session creation)
+	callbacksMissionID string                    // Mission ID from callbacks (for mission-scoped tool plumbing)
+	iterationIndex     *int                      // Iteration index (nil for non-iterated tasks)
+	agentMgr           *AgentManager             // Manages agent lifecycle (creation, session, resume)
 	pricingOverrides   map[string]*llm.ModelPricing
-	subtasksSet        bool                   // Whether set_subtasks has been called
-	memoryStore        aitools.MemoryStore    // Memory access for missions (nil if not configured)
-	compaction         *CompactionConfig      // Compaction settings (nil if disabled)
-	pruneOn            int                    // Trigger pruning at this many turns (0 = disabled)
-	pruneTo            int                    // Prune down to this many turns
-	budget             BudgetChecker          // Optional token/dollar budget enforcer
+	subtasksSet        bool                     // Whether set_subtasks has been called
+	memoryStore        aitools.MemoryStore      // Memory access for missions (nil if not configured)
+	compaction         *CompactionConfig        // Compaction settings (nil if disabled)
+	pruneOn            int                      // Trigger pruning at this many turns (0 = disabled)
+	pruneTo            int                      // Prune down to this many turns
+	budget             BudgetChecker            // Optional token/dollar budget enforcer
 	humanBridge        aitools.HumanInputBridge // Optional bridge for builtins.human.ask
 	gatewayBridge      aitools.GatewayBridge    // Optional bridge for builtins.gateway.post
 }
@@ -455,20 +455,20 @@ func NewCommander(ctx context.Context, opts CommanderOptions) (*Commander, error
 	interceptor := aitools.NewResultInterceptor(resultStore, resultConfig)
 
 	sup := &Commander{
-		Name:            fmt.Sprintf("%s/%s", opts.MissionName, opts.TaskName),
-		TaskName:        opts.TaskName,
-		ModelName:       actualModelName,
-		session:         session,
-		tools:           make(map[string]aitools.Tool),
-		provider:        provider,
-		ownsProvider:    ownsProvider,
-		agents:          agents,
-		configPath:      opts.ConfigPath,
-		cfg:             opts.Config,
-		resultStore:     resultStore,
-		interceptor:     interceptor,
-		completedAgents: make(map[string]*completedAgent),
-		agentSessions:   make(map[string]*Agent),
+		Name:             fmt.Sprintf("%s/%s", opts.MissionName, opts.TaskName),
+		TaskName:         opts.TaskName,
+		ModelName:        actualModelName,
+		session:          session,
+		tools:            make(map[string]aitools.Tool),
+		provider:         provider,
+		ownsProvider:     ownsProvider,
+		agents:           agents,
+		configPath:       opts.ConfigPath,
+		cfg:              opts.Config,
+		resultStore:      resultStore,
+		interceptor:      interceptor,
+		completedAgents:  make(map[string]*completedAgent),
+		agentSessions:    make(map[string]*Agent),
 		secretInfos:      opts.SecretInfos,
 		secretValues:     opts.SecretValues,
 		compaction:       opts.Compaction,
@@ -957,7 +957,6 @@ Your current task is for a NEW item with its own parameters.
 	s.session.AddSystemPrompt(prompt)
 }
 
-
 // GetSubmitResults returns all outputs submitted via the submit_output tool
 func (s *Commander) GetSubmitResults() []aitools.SubmitResult {
 	if s.submitOutput == nil {
@@ -1443,15 +1442,15 @@ func (s *Commander) runLoop(ctx context.Context, currentInput string, resume boo
 			stats := s.session.MessageStats()
 			turnData := protocol.SessionTurnData{
 				Model:             s.ModelName,
-				InputTokens:      resp.Usage.InputTokens,
-				OutputTokens:     resp.Usage.OutputTokens,
-				CacheWriteTokens: resp.Usage.CacheWriteTokens,
-				CacheReadTokens:  resp.Usage.CacheReadTokens,
-				UserMessages:     stats.UserCount,
+				InputTokens:       resp.Usage.InputTokens,
+				OutputTokens:      resp.Usage.OutputTokens,
+				CacheWriteTokens:  resp.Usage.CacheWriteTokens,
+				CacheReadTokens:   resp.Usage.CacheReadTokens,
+				UserMessages:      stats.UserCount,
 				AssistantMessages: stats.AssistantCount,
-				SystemMessages:   stats.SystemCount,
-				PayloadBytes:     stats.PayloadBytes,
-				TurnDurationMs:   time.Since(llmStart).Milliseconds(),
+				SystemMessages:    stats.SystemCount,
+				PayloadBytes:      stats.PayloadBytes,
+				TurnDurationMs:    time.Since(llmStart).Milliseconds(),
 			}
 			if pricing := llm.GetPricing(s.ModelName, s.pricingOverrides); pricing != nil {
 				cost := llm.ComputeTurnCost(pricing, resp.Usage.InputTokens, resp.Usage.OutputTokens, resp.Usage.CacheReadTokens, resp.Usage.CacheWriteTokens)
@@ -1596,6 +1595,7 @@ func (s *Commander) runLoop(ctx context.Context, currentInput string, resume boo
 		// Execute all tool calls and collect results
 		var toolResults []llm.ToolResultBlock
 		var turnMedia []llm.ContentBlock
+		var turnMediaSources []sourcedToolMedia
 		for _, tc := range toolUses {
 			actionInput := string(tc.Input)
 
@@ -1674,7 +1674,9 @@ func (s *Commander) runLoop(ctx context.Context, currentInput string, resume boo
 				Content:   resultContent,
 			})
 
-			if parts := mediaBlocksToContentBlocks(media); len(parts) > 0 {
+			var parts []llm.ContentBlock
+			turnMediaSources, parts = appendSourcedToolMedia(turnMediaSources, tc.ID, media)
+			if len(parts) > 0 {
 				turnMedia = append(turnMedia, parts...)
 			}
 
@@ -1719,7 +1721,7 @@ func (s *Commander) runLoop(ctx context.Context, currentInput string, resume boo
 			}
 			parts = append(parts, turnMedia...)
 			msg := llm.Message{Role: llm.RoleUser, Parts: parts}
-			s.sessionLogger.AppendStructuredMessage(s.sessionID, "user", AuditContentForMessage(msg), PartsFromMessage(msg), now, now)
+			s.sessionLogger.AppendStructuredMessage(s.sessionID, "user", AuditContentForMessage(msg), partsFromToolResultTurn(msg, turnMediaSources), now, now)
 		}
 
 		// If task is complete, exit the loop
@@ -1823,8 +1825,8 @@ func (s *Commander) applyTurnPruning(streamer CommanderStreamer) {
 		if s.debugLogger != nil {
 			s.debugLogger.LogEvent("commander_pruning", map[string]any{
 				"messages_dropped": dropped,
-				"prune_on":        s.pruneOn,
-				"prune_to":        s.pruneTo,
+				"prune_on":         s.pruneOn,
+				"prune_to":         s.pruneTo,
 			})
 		}
 	}
@@ -1909,10 +1911,10 @@ func (s *Commander) CloneForQuery() *Commander {
 		ModelName:       s.ModelName,
 		session:         clonedSession,
 		tools:           make(map[string]aitools.Tool),
-		provider:        s.provider,     // Shared - providers are thread-safe
-		ownsProvider:    false,          // Clone doesn't own the provider
-		agents:          s.agents,       // Shared - config is read-only
-		callbacks:       s.callbacks,    // Shared - callbacks are stateless
+		provider:        s.provider,  // Shared - providers are thread-safe
+		ownsProvider:    false,       // Clone doesn't own the provider
+		agents:          s.agents,    // Shared - config is read-only
+		callbacks:       s.callbacks, // Shared - callbacks are stateless
 		configPath:      s.configPath,
 		cfg:             s.cfg,
 		resultStore:     resultStore,
@@ -2020,7 +2022,6 @@ func (s *Commander) extractAnswer(content string) string {
 	}
 	return strings.TrimSpace(content)
 }
-
 
 // ExecuteAggregation performs a simple LLM call for summary aggregation (no tools)
 func (s *Commander) ExecuteAggregation(ctx context.Context, prompt string) (string, error) {
@@ -2494,8 +2495,8 @@ func (t *queryTaskOutputTool) ToolPayloadSchema() aitools.Schema {
 
 func (t *queryTaskOutputTool) Call(ctx context.Context, input string) string {
 	var params struct {
-		Task      string `json:"task"`
-		Filters   []struct {
+		Task    string `json:"task"`
+		Filters []struct {
 			Field string `json:"field"`
 			Op    string `json:"op"`
 			Value any    `json:"value"`

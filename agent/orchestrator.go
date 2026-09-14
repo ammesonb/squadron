@@ -71,18 +71,18 @@ type llmSession interface {
 
 // orchestrator handles the agent conversation loop
 type orchestrator struct {
-	session        llmSession
-	streamer       streamers.ChatHandler
-	tools          map[string]aitools.Tool
-	interceptor    *aitools.ResultInterceptor
-	pruningManager *llm.PruningManager
-	eventLogger    EventLogger
-	turnLogger     *llm.TurnLogger
-	secretInjector *secretInjector
-	compaction     *CompactionConfig
-	onCompaction   func(inputTokens int, tokenLimit int, messagesCompacted int, turnRetention int)
-	onSessionTurn  func(data protocol.SessionTurnData)
-	modelName      string
+	session          llmSession
+	streamer         streamers.ChatHandler
+	tools            map[string]aitools.Tool
+	interceptor      *aitools.ResultInterceptor
+	pruningManager   *llm.PruningManager
+	eventLogger      EventLogger
+	turnLogger       *llm.TurnLogger
+	secretInjector   *secretInjector
+	compaction       *CompactionConfig
+	onCompaction     func(inputTokens int, tokenLimit int, messagesCompacted int, turnRetention int)
+	onSessionTurn    func(data protocol.SessionTurnData)
+	modelName        string
 	sessionLogger    SessionLogger
 	sessionID        string
 	taskID           string
@@ -217,15 +217,15 @@ func (o *orchestrator) processTurn(ctx context.Context, input string, resume boo
 				stats := adapter.GetSession().MessageStats()
 				turnData := protocol.SessionTurnData{
 					Model:             o.modelName,
-					InputTokens:      resp.Usage.InputTokens,
-					OutputTokens:     resp.Usage.OutputTokens,
-					CacheWriteTokens: resp.Usage.CacheWriteTokens,
-					CacheReadTokens:  resp.Usage.CacheReadTokens,
-					UserMessages:     stats.UserCount,
+					InputTokens:       resp.Usage.InputTokens,
+					OutputTokens:      resp.Usage.OutputTokens,
+					CacheWriteTokens:  resp.Usage.CacheWriteTokens,
+					CacheReadTokens:   resp.Usage.CacheReadTokens,
+					UserMessages:      stats.UserCount,
 					AssistantMessages: stats.AssistantCount,
-					SystemMessages:   stats.SystemCount,
-					PayloadBytes:     stats.PayloadBytes,
-					TurnDurationMs:   time.Since(llmStart).Milliseconds(),
+					SystemMessages:    stats.SystemCount,
+					PayloadBytes:      stats.PayloadBytes,
+					TurnDurationMs:    time.Since(llmStart).Milliseconds(),
 				}
 				if pricing := llm.GetPricing(o.modelName, o.pricingOverrides); pricing != nil {
 					cost := llm.ComputeTurnCost(pricing, resp.Usage.InputTokens, resp.Usage.OutputTokens, resp.Usage.CacheReadTokens, resp.Usage.CacheWriteTokens)
@@ -384,6 +384,7 @@ func (o *orchestrator) processTurn(ctx context.Context, input string, resume boo
 		// Execute all tool calls and collect results
 		var toolResults []llm.ToolResultBlock
 		var turnMedia []llm.ContentBlock
+		var turnMediaSources []sourcedToolMedia
 		for _, tc := range toolUses {
 			actionInput := string(tc.Input)
 
@@ -502,7 +503,9 @@ func (o *orchestrator) processTurn(ctx context.Context, input string, resume boo
 				Content:   resultContent,
 			})
 
-			if parts := mediaBlocksToContentBlocks(media); len(parts) > 0 {
+			var parts []llm.ContentBlock
+			turnMediaSources, parts = appendSourcedToolMedia(turnMediaSources, tc.ID, media)
+			if len(parts) > 0 {
 				turnMedia = append(turnMedia, parts...)
 			}
 		}
@@ -529,7 +532,7 @@ func (o *orchestrator) processTurn(ctx context.Context, input string, resume boo
 			}
 			parts = append(parts, turnMedia...)
 			msg := llm.Message{Role: llm.RoleUser, Parts: parts}
-			o.sessionLogger.AppendStructuredMessage(o.sessionID, "user", AuditContentForMessage(msg), PartsFromMessage(msg), now, now)
+			o.sessionLogger.AppendStructuredMessage(o.sessionID, "user", AuditContentForMessage(msg), partsFromToolResultTurn(msg, turnMediaSources), now, now)
 		}
 
 		// Reset for next iteration
@@ -546,7 +549,6 @@ func (o *orchestrator) getSessionMessages() []llm.Message {
 	}
 	return nil
 }
-
 
 // checkAndCompact checks if compaction is needed and performs it if so
 func (o *orchestrator) checkAndCompact(inputTokens int) {
@@ -594,7 +596,6 @@ func (o *orchestrator) applyTurnPruning() {
 	}
 }
 
-
 // lookupTool finds a tool by name
 func (o *orchestrator) lookupTool(name string) aitools.Tool {
 	if tool, ok := o.tools[name]; ok {
@@ -602,4 +603,3 @@ func (o *orchestrator) lookupTool(name string) aitools.Tool {
 	}
 	return nil
 }
-

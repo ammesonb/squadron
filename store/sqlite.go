@@ -666,7 +666,7 @@ func (s *SQLiteSessionStore) CreateChatSession(agentName, model string) (string,
 func (s *SQLiteSessionStore) ListChatSessions(agentName string, limit, offset int) ([]SessionInfo, int, error) {
 	// Count total
 	var total int
-	countQuery := `SELECT COUNT(*) FROM sessions WHERE role = 'chat' AND status != 'completed'`
+	countQuery := `SELECT COUNT(*) FROM sessions WHERE role = 'chat' AND status != 'completed' AND COALESCE(SUBSTR(agent_name, 1, 16), '') != 'cc_conversation:'`
 	args := []any{}
 	if agentName != "" {
 		countQuery += ` AND agent_name = ?`
@@ -677,7 +677,7 @@ func (s *SQLiteSessionStore) ListChatSessions(agentName string, limit, offset in
 	}
 
 	// Fetch page
-	query := `SELECT id, role, agent_name, model, status, started_at, finished_at FROM sessions WHERE role = 'chat' AND status != 'completed'`
+	query := `SELECT id, role, agent_name, model, status, started_at, finished_at FROM sessions WHERE role = 'chat' AND status != 'completed' AND COALESCE(SUBSTR(agent_name, 1, 16), '') != 'cc_conversation:'`
 	fetchArgs := []any{}
 	if agentName != "" {
 		query += ` AND agent_name = ?`
@@ -711,6 +711,30 @@ func (s *SQLiteSessionStore) ListChatSessions(agentName string, limit, offset in
 		sessions = append(sessions, si)
 	}
 	return sessions, total, nil
+}
+
+func (s *SQLiteSessionStore) ListAgentConversations(agentName string, limit int) ([]SessionInfo, error) {
+	rows, err := s.db.Query(`SELECT id, role, agent_name, model, status, started_at, finished_at
+		FROM sessions WHERE role = 'chat' AND agent_name = ? ORDER BY started_at DESC LIMIT ?`, agentName, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var sessions []SessionInfo
+	for rows.Next() {
+		var si SessionInfo
+		var agName, startedAt, finishedAt sql.NullString
+		if err := rows.Scan(&si.ID, &si.Role, &agName, &si.Model, &si.Status, &startedAt, &finishedAt); err != nil {
+			return nil, err
+		}
+		si.AgentName = agName.String
+		if value, _ := tsParseNull(startedAt); value != nil {
+			si.StartedAt = *value
+		}
+		si.FinishedAt, _ = tsParseNull(finishedAt)
+		sessions = append(sessions, si)
+	}
+	return sessions, rows.Err()
 }
 
 // =============================================================================
@@ -1204,5 +1228,3 @@ func (s *SQLiteEventStore) GetEventsByTask(taskID string, limit, offset int) ([]
 	defer rows.Close()
 	return scanEvents(rows)
 }
-
-

@@ -1,0 +1,66 @@
+---
+title: Scheduling Missions
+---
+
+# Scheduling Missions
+
+Schedules are managed by the Squadron product, not by workspace HCL or the worker process. This keeps timing, execution identity, permissions, and run history in one durable control plane.
+
+## Create a schedule
+
+Open a mission's **Definition** page, find **Schedules**, and select **Add schedule**. Each schedule records:
+
+- A display name
+- A standard five-field cron expression
+- An IANA timezone such as `America/Chicago` or `UTC`
+- Values for the mission's configured inputs
+- The user or service principal that the run executes as
+- An active or paused state
+
+For example, `0 9 * * 1-5` runs at 9:00 AM every weekday in the selected timezone.
+
+Scheduled runs may use a user or service principal. The available choices follow the same mission Run grants as an interactive run. The product revalidates the selected identity's permission each time the schedule fires; removing access prevents later executions without requiring the schedule to be edited.
+
+## Runtime behavior
+
+The product calculates the next occurrence, claims it durably, and dispatches the mission to its connected workspace worker. The worker does not keep cron timers. It accepts the explicit run request and continues to enforce the mission's `max_parallel` limit.
+
+If the worker is disconnected or the identity is no longer eligible, the occurrence is recorded as skipped or failed. The schedule remains available for later occurrences. Pause a schedule when it should remain configured without firing.
+
+## Webhook triggers
+
+Webhook triggers remain mission configuration because they describe an event entry point rather than a time-based schedule:
+
+```hcl
+mission "ingest" {
+  trigger {
+    webhook_path = "/ingest"
+    secret       = vars.webhook_secret
+  }
+
+  task "process" { objective = "Process incoming data" }
+}
+```
+
+The deployed product registers the full route as `POST /webhooks/<instance_name>/<webhook_path>`. The JSON request body is passed as mission inputs. A mission supports at most one `trigger` block.
+
+## Concurrency
+
+`max_parallel` remains part of mission HCL and limits concurrent instances regardless of whether a run starts manually, from a schedule, or from a webhook:
+
+```hcl
+mission "data_pipeline" {
+  max_parallel = 2
+  task "run" { objective = "Process data" }
+}
+```
+
+## Migration from schedule blocks
+
+Worker-side `schedule {}` blocks are no longer supported. Remove them from mission HCL and recreate each schedule from the mission Definition page. Move its cron/timezone, input values, and intended run identity into the product-managed schedule.
+
+## See also
+
+- [Running Missions](/product/runs)
+- [Access Control](/product/access)
+- [Missions Overview](/config/missions/overview)

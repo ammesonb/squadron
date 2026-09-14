@@ -15,7 +15,7 @@ import (
 type RefreshCallback func()
 
 // StartRefreshLoop spawns a goroutine that refreshes the token for the
-// named MCP server before it expires. It uses the vault-backed store to
+// named MCP server before it expires. It uses the process-local store to
 // read the current token, refreshes it via the OAuthHandler, and writes
 // the new token back. If a callback is set, it's invoked after each
 // successful refresh so the caller can reconnect stale transports.
@@ -26,7 +26,7 @@ func StartRefreshLoop(ctx context.Context, name, serverURL string, onRefresh Ref
 }
 
 func refreshLoop(ctx context.Context, name, serverURL string, onRefresh RefreshCallback) {
-	store := NewVaultTokenStore(name)
+	store := NewRuntimeTokenStore(name)
 
 	for {
 		tok, err := store.GetToken(ctx)
@@ -73,7 +73,7 @@ func refreshLoop(ctx context.Context, name, serverURL string, onRefresh RefreshC
 
 // ForceRefresh reads the stored token and immediately refreshes it.
 func ForceRefresh(ctx context.Context, name, serverURL string) error {
-	store := NewVaultTokenStore(name)
+	store := NewRuntimeTokenStore(name)
 	tok, err := store.GetToken(ctx)
 	if err != nil {
 		return fmt.Errorf("oauth %q: %w", name, err)
@@ -84,7 +84,7 @@ func ForceRefresh(ctx context.Context, name, serverURL string) error {
 	return doRefresh(ctx, name, serverURL, store, tok)
 }
 
-func doRefresh(ctx context.Context, name, serverURL string, store *VaultTokenStore, tok *transport.Token) error {
+func doRefresh(ctx context.Context, name, serverURL string, store *RuntimeTokenStore, tok *transport.Token) error {
 	creds, _ := LoadClientCredentials(name)
 
 	cfg := transport.OAuthConfig{

@@ -50,7 +50,7 @@ func SquadronHome() (string, error) {
 // SetHome only takes effect if SquadronHome has not yet resolved —
 // callers at program start see the new value, but any call that already
 // materialized the cache wins. (In practice, CLI commands call SetHome
-// before touching vault / DB / plugins, so this is fine.)
+// before touching the DB or plugins, so this is fine.)
 func SetHome(path string) error {
 	if path == "" {
 		return nil

@@ -13,7 +13,6 @@ import (
 	"github.com/zclconf/go-cty/cty"
 
 	schemafunc "squadron/config/functions"
-	vaultpkg "squadron/config/vault"
 	"squadron/internal/paths"
 	squadronmcp "squadron/mcp"
 	"squadron/mcp/oauth"
@@ -35,8 +34,8 @@ type Config struct {
 	Plugins     []Plugin     `hcl:"plugin,block"`
 	Gateway     *Gateway     `hcl:"-"` // Parsed manually — at most one per config; settings come from a child block
 	MCPServers  []MCPServer  `hcl:"-"`
-	Missions   []Mission   `hcl:"mission,block"`
-	Skills     []Skill     `hcl:"-"`
+	Missions    []Mission    `hcl:"mission,block"`
+	Skills      []Skill      `hcl:"-"`
 
 	// Storage configuration (optional, defaults to memory backend)
 	Storage *StorageConfig `hcl:"-"`
@@ -100,7 +99,7 @@ func Load(path string) (*Config, error) {
 //
 // Expressions inside the block are resolved the same way LoadMCPSpecs does
 // it: against a minimal vars context built from the config's variable
-// blocks, backed by the vault, with load() bound to the config dir. This is
+// blocks, backed by Command Center runtime values, with load() bound to the config dir. This is
 // what makes the documented `secret = vars.mcp_host_secret` form work.
 //
 // Returns (nil, nil) if the config files can't be found, can't be parsed,
@@ -186,7 +185,7 @@ func LoadMCPHost(path string) (*MCPHostConfig, error) {
 //
 // Variable references inside mcp blocks are resolved against a minimal
 // vars context built from any variable "..." blocks declared in the
-// config, backed by the vault for values. Anything else (plugins, models,
+// config, backed by Command Center for values. Anything else (plugins, models,
 // agents, tools, missions) is ignored even if it's malformed — a user
 // whose entire config is broken can still run `squadron mcp status` to see
 // which MCP blocks they declared and the auth state of their tokens.
@@ -782,18 +781,17 @@ func LoadDir(dir string) (*Config, error) {
 
 // parsedBlocks holds all blocks extracted from a file in one pass
 type parsedBlocks struct {
-	Vault     []*hcl.Block
-	Variables []*hcl.Block
-	Models    []*hcl.Block
-	Agents    []*hcl.Block
-	Tools     []*hcl.Block
-	Plugins   []*hcl.Block
-	MCPServers []*hcl.Block
-	Missions  []*hcl.Block
+	Variables     []*hcl.Block
+	Models        []*hcl.Block
+	Agents        []*hcl.Block
+	Tools         []*hcl.Block
+	Plugins       []*hcl.Block
+	MCPServers    []*hcl.Block
+	Missions      []*hcl.Block
 	Storage       []*hcl.Block
 	CommandCenter []*hcl.Block
 	Memories      []*hcl.Block
-	Packets      []*hcl.Block
+	Packets       []*hcl.Block
 	MCPHost       []*hcl.Block
 	Skills        []*hcl.Block
 	Gateways      []*hcl.Block
@@ -837,7 +835,6 @@ func loadFromFiles(configDir string, files []string) (*Config, error) {
 		// Extract all known block types in one PartialContent call
 		content, _, diags := hclFile.Body.PartialContent(&hcl.BodySchema{
 			Blocks: []hcl.BlockHeaderSchema{
-				{Type: "vault"},
 				{Type: "variable", LabelNames: []string{"name"}},
 				{Type: "model", LabelNames: []string{"name"}},
 				{Type: "agent", LabelNames: []string{"name"}},
@@ -863,8 +860,6 @@ func loadFromFiles(configDir string, files []string) (*Config, error) {
 		pb.File = file
 		for _, block := range content.Blocks {
 			switch block.Type {
-			case "vault":
-				pb.Vault = append(pb.Vault, block)
 			case "variable":
 				pb.Variables = append(pb.Variables, block)
 			case "model":
@@ -898,31 +893,8 @@ func loadFromFiles(configDir string, files []string) (*Config, error) {
 		allParsedBlocks = append(allParsedBlocks, pb)
 	}
 
-	// Stage 0: vault block. Decoded with a nil context because it
-	// cannot reference vars — the block is what decides how to
-	// decrypt vars.vault in the first place.
-	var vaultConfig *VaultConfig
-	for _, pb := range allParsedBlocks {
-		for _, block := range pb.Vault {
-			if vaultConfig != nil {
-				return nil, fmt.Errorf("vault block declared more than once")
-			}
-			var vc VaultConfig
-			if diags := gohcl.DecodeBody(block.Body, nil, &vc); diags.HasErrors() {
-				return nil, fmt.Errorf("vault block: %w", diags)
-			}
-			vaultConfig = &vc
-		}
-	}
-	providerName := ""
-	if vaultConfig != nil {
-		providerName = vaultConfig.Provider
-	}
-	if err := vaultpkg.SetActiveProviderName(providerName); err != nil {
-		return nil, fmt.Errorf("vault block: %w", err)
-	}
-
-	// Stage 1: Load variables (no context needed)
+	// Stage 1: Load variable declarations. Values are supplied in memory by
+	// Command Center before the remainder of the configuration is evaluated.
 	var allVars []Variable
 	for _, pb := range allParsedBlocks {
 		for _, block := range pb.Variables {
@@ -1112,7 +1084,6 @@ func loadFromFiles(configDir string, files []string) (*Config, error) {
 		}
 		m.Provider = Provider(providerVal.AsString())
 
-
 		if attr, ok := content.Attributes["aliases"]; ok {
 			aliasesVal, d := attr.Expr.Value(ctx)
 			if d.HasErrors() {
@@ -1300,8 +1271,8 @@ func loadFromFiles(configDir string, files []string) (*Config, error) {
 			}
 			allMCPServers = append(allMCPServers, *srv)
 
-			// Persist config-level OAuth client credentials to the vault so
-			// the login flow and transport pick them up automatically.
+			// Make config-level OAuth client credentials available to the
+			// transport for this worker process.
 			if srv.ClientID != "" {
 				if err := oauth.SaveClientCredentials(srv.Name, oauth.ClientCredentials{
 					ClientID:     srv.ClientID,
@@ -1464,7 +1435,7 @@ func loadFromFiles(configDir string, files []string) (*Config, error) {
 		}
 	}
 
-	return &Config{
+	cfg := &Config{
 		Variables:        allVars,
 		Models:           allModels,
 		Agents:           allAgents,
@@ -1477,13 +1448,15 @@ func loadFromFiles(configDir string, files []string) (*Config, error) {
 		CommandCenter:    commandCenterConfig,
 		MCPHost:          mcpHostConfig,
 		Memories:         allMemories,
-		Packets:         allPackets,
+		Packets:          allPackets,
 		LoadedPlugins:    loadedPlugins,
 		LoadedMCPClients: loadedMCPClients,
 		LoadedMCPErrors:  loadedMCPErrors,
 		ResolvedVars:     resolvedVars,
 		Gateway:          gatewayCfg,
-	}, nil
+	}
+	populateConfigSources(configDir, cfg, parser.Files())
+	return cfg, nil
 }
 
 // inputFieldBlock is used for parsing input field blocks
@@ -1664,15 +1637,15 @@ func parseToolBlock(block *hcl.Block, baseCtx *hcl.EvalContext, loadedPlugins ma
 // buildVarsContext creates context with just vars
 func buildVarsContext(vars []Variable) (*hcl.EvalContext, map[string]cty.Value) {
 	varsMap := make(map[string]cty.Value)
-	fileVars, _ := LoadVarsFromFile()
+	fileVars := LoadVars()
 
-	// Expose every vault key as vars.<name> with no declaration required.
+	// Expose every Command Center value as vars.<name> with no declaration required.
 	for k, val := range fileVars {
 		varsMap[k] = cty.StringVal(val)
 	}
 
-	// Declared variables still apply defaults / empty fallback when the vault
-	// has no value for them. A vault value always wins over a declared default.
+	// Declared variables still apply defaults / empty fallback when Command
+	// Center has no stored value. A stored value always wins over a default.
 	for _, v := range vars {
 		if _, ok := varsMap[v.Name]; ok {
 			continue
@@ -1903,7 +1876,7 @@ func parseAgentBlock(block *hcl.Block, ctx *hcl.EvalContext) (*Agent, error) {
 		Attributes: []hcl.AttributeSchema{
 			{Name: "model", Required: true},
 			{Name: "personality", Required: true},
-			{Name: "role"}, // deprecated; accepted and ignored for backward compat
+			{Name: "role"},
 			{Name: "tools"},
 			{Name: "skills"},
 			{Name: "reasoning"},
@@ -1955,7 +1928,7 @@ func parseAgentBlock(block *hcl.Block, ctx *hcl.EvalContext) (*Agent, error) {
 		}
 	}
 
-	a := &Agent{Name: block.Labels[0], LocalSkills: localSkills}
+	a := &Agent{Name: block.Labels[0], LocalSkills: localSkills, Source: sourceForBlock(block)}
 
 	// Decode attributes
 	if attr, ok := content.Attributes["model"]; ok {
@@ -1971,6 +1944,13 @@ func parseAgentBlock(block *hcl.Block, ctx *hcl.EvalContext) (*Agent, error) {
 			return nil, fmt.Errorf("agent '%s' personality: %w", a.Name, d)
 		}
 		a.Personality = val.AsString()
+	}
+	if attr, ok := content.Attributes["role"]; ok {
+		val, d := attr.Expr.Value(agentCtx)
+		if d.HasErrors() {
+			return nil, fmt.Errorf("agent '%s' role: %w", a.Name, d)
+		}
+		a.Role = val.AsString()
 	}
 	if attr, ok := content.Attributes["tools"]; ok {
 		val, d := attr.Expr.Value(agentCtx)
@@ -2065,6 +2045,11 @@ func parseMissionBlock(block *hcl.Block, ctx *hcl.EvalContext) (*Mission, error)
 	})
 	if diags.HasErrors() {
 		return nil, fmt.Errorf("mission '%s': %w", missionName, diags)
+	}
+	for _, child := range missionContent.Blocks {
+		if child.Type == "schedule" {
+			return nil, fmt.Errorf("mission '%s': schedule blocks are managed by Command Center and are no longer supported in worker configuration", missionName)
+		}
 	}
 
 	// Parse commander block (required)
@@ -2278,19 +2263,6 @@ func parseMissionBlock(block *hcl.Block, ctx *hcl.EvalContext) (*Mission, error)
 		missionScratchpad = v.True()
 	}
 
-	// Parse schedule blocks (optional, multiple allowed)
-	var schedules []Schedule
-	for _, schedBlock := range missionContent.Blocks {
-		if schedBlock.Type != "schedule" {
-			continue
-		}
-		sched, err := parseScheduleBlock(schedBlock, ctx)
-		if err != nil {
-			return nil, fmt.Errorf("mission '%s' schedule: %w", missionName, err)
-		}
-		schedules = append(schedules, *sched)
-	}
-
 	// Parse trigger block (optional, singleton)
 	var trigger *Trigger
 	for _, trigBlock := range missionContent.Blocks {
@@ -2353,19 +2325,19 @@ func parseMissionBlock(block *hcl.Block, ctx *hcl.EvalContext) (*Mission, error)
 	}
 
 	mission := &Mission{
-		Name:        missionName,
-		Directive:   directive,
-		Commander:   missionCommander,
-		Agents:      missionAgents,
-		LocalAgents: localAgents,
-		Memories:   missionMemories,
-		Packets:   missionPackets,
-		Memory:     missionMemory,
-		Scratchpad: missionScratchpad,
-		Schedules:   schedules,
-		Trigger:     trigger,
-		MaxParallel: maxParallel,
-		Budget:      missionBudget,
+		Name:         missionName,
+		Directive:    directive,
+		Source:       sourceForBlock(block),
+		Commander:    missionCommander,
+		Agents:       missionAgents,
+		LocalAgents:  localAgents,
+		Memories:     missionMemories,
+		Packets:      missionPackets,
+		Memory:       missionMemory,
+		Scratchpad:   missionScratchpad,
+		Trigger:      trigger,
+		MaxParallel:  maxParallel,
+		Budget:       missionBudget,
 		Notification: missionNotification,
 	}
 
@@ -2459,47 +2431,6 @@ func parseMissionBlock(block *hcl.Block, ctx *hcl.EvalContext) (*Mission, error)
 	}
 
 	return mission, nil
-}
-
-// parseScheduleBlock parses a schedule block, extracting known fields via gohcl
-// and manually parsing the optional inputs map attribute.
-func parseScheduleBlock(block *hcl.Block, ctx *hcl.EvalContext) (*Schedule, error) {
-	// Use PartialContent to extract the inputs attribute separately
-	content, remain, diags := block.Body.PartialContent(&hcl.BodySchema{
-		Attributes: []hcl.AttributeSchema{
-			{Name: "inputs"},
-		},
-	})
-	if diags.HasErrors() {
-		return nil, diags
-	}
-
-	// Decode the remaining body (at, every, weekdays, cron, timezone) via gohcl
-	var sched Schedule
-	diags = gohcl.DecodeBody(remain, ctx, &sched)
-	if diags.HasErrors() {
-		return nil, diags
-	}
-
-	// Parse inputs attribute if present
-	if attr, ok := content.Attributes["inputs"]; ok {
-		val, valDiags := attr.Expr.Value(ctx)
-		if valDiags.HasErrors() {
-			return nil, valDiags
-		}
-		if !val.Type().IsObjectType() && !val.Type().IsMapType() {
-			return nil, fmt.Errorf("'inputs' must be a map of strings")
-		}
-		sched.Inputs = make(map[string]string)
-		for k, v := range val.AsValueMap() {
-			if v.Type() != cty.String {
-				return nil, fmt.Errorf("schedule input %q must be a string value", k)
-			}
-			sched.Inputs[k] = v.AsString()
-		}
-	}
-
-	return &sched, nil
 }
 
 // parseMissionInputBlock parses an input block within a mission
@@ -2799,8 +2730,8 @@ func parseTaskBlock(block *hcl.Block, ctx *hcl.EvalContext) (*Task, error) {
 	taskContent, _, diags := block.Body.PartialContent(&hcl.BodySchema{
 		Attributes: []hcl.AttributeSchema{
 			{Name: "objective", Required: true},
-			{Name: "agents"},    // Optional - uses mission-level agents if not specified
-			{Name: "packets"},   // Optional - task-scoped declared packet references
+			{Name: "agents"},  // Optional - uses mission-level agents if not specified
+			{Name: "packets"}, // Optional - task-scoped declared packet references
 			{Name: "depends_on"},
 			{Name: "send_to"},
 			{Name: "output"}, // shorthand: output = { field = string("desc", true) }
@@ -2963,7 +2894,7 @@ func parseTaskBlock(block *hcl.Block, ctx *hcl.EvalContext) (*Task, error) {
 		ObjectiveExpr: objectiveExpr,
 		RawObjective:  rawObjective,
 		Agents:        agents,
-		Packets:      taskPackets,
+		Packets:       taskPackets,
 		DependsOn:     dependsOn,
 		SendTo:        sendTo,
 		Iterator:      iterator,

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/zclconf/go-cty/cty"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // NewPostgresBundle creates a Bundle backed by PostgreSQL
@@ -852,7 +852,7 @@ func (s *PgSessionStore) CreateChatSession(agentName, model string) (string, err
 func (s *PgSessionStore) ListChatSessions(agentName string, limit, offset int) ([]SessionInfo, int, error) {
 	// Count total
 	var total int
-	countQuery := `SELECT COUNT(*) FROM sessions WHERE role = 'chat' AND status != 'completed'`
+	countQuery := `SELECT COUNT(*) FROM sessions WHERE role = 'chat' AND status != 'completed' AND COALESCE(SUBSTR(agent_name, 1, 16), '') != 'cc_conversation:'`
 	args := []any{}
 	argIdx := 1
 	if agentName != "" {
@@ -865,7 +865,7 @@ func (s *PgSessionStore) ListChatSessions(agentName string, limit, offset int) (
 	}
 
 	// Fetch page
-	query := `SELECT id, role, agent_name, model, status, started_at, finished_at FROM sessions WHERE role = 'chat' AND status != 'completed'`
+	query := `SELECT id, role, agent_name, model, status, started_at, finished_at FROM sessions WHERE role = 'chat' AND status != 'completed' AND COALESCE(SUBSTR(agent_name, 1, 16), '') != 'cc_conversation:'`
 	fetchArgs := []any{}
 	fetchIdx := 1
 	if agentName != "" {
@@ -901,6 +901,30 @@ func (s *PgSessionStore) ListChatSessions(agentName string, limit, offset int) (
 		sessions = append(sessions, si)
 	}
 	return sessions, total, nil
+}
+
+func (s *PgSessionStore) ListAgentConversations(agentName string, limit int) ([]SessionInfo, error) {
+	rows, err := s.db.Query(`SELECT id, role, agent_name, model, status, started_at, finished_at
+		FROM sessions WHERE role = 'chat' AND agent_name = $1 ORDER BY started_at DESC LIMIT $2`, agentName, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var sessions []SessionInfo
+	for rows.Next() {
+		var si SessionInfo
+		var agName, startedAt, finishedAt sql.NullString
+		if err := rows.Scan(&si.ID, &si.Role, &agName, &si.Model, &si.Status, &startedAt, &finishedAt); err != nil {
+			return nil, err
+		}
+		si.AgentName = agName.String
+		if value, _ := tsParseNull(startedAt); value != nil {
+			si.StartedAt = *value
+		}
+		si.FinishedAt, _ = tsParseNull(finishedAt)
+		sessions = append(sessions, si)
+	}
+	return sessions, rows.Err()
 }
 
 // =============================================================================

@@ -1,0 +1,41 @@
+---
+title: Setup and Workspaces
+---
+
+# Setup and Workspaces
+
+Squadron can run as a local product for one project or as a shared deployment that manages multiple workspaces.
+
+## Deploy the product
+
+A shared deployment requires PostgreSQL, a public URL, and a master encryption key. On first launch, the deployment must be claimed by an administrator.
+
+When built-in authentication is used, the first administrator chooses an email address and password. When OIDC is configured, the first successful OIDC login claims the deployment. A setup token can be required for either path.
+
+The deployment variables retain the `COMMAND_CENTER_` prefix for compatibility:
+
+```bash
+COMMAND_CENTER_MODE=control-plane
+COMMAND_CENTER_PUBLIC_URL=https://squadron.example.com
+COMMAND_CENTER_DATABASE_URL=postgres://...
+COMMAND_CENTER_MASTER_KEY=...
+COMMAND_CENTER_SETUP_TOKEN=...
+```
+
+## Create a workspace
+
+An administrator creates a workspace with:
+
+- A display name
+- An optional repository URL
+- A default branch, normally `main`
+
+Each workspace receives a worker credential. Treat it as a secret: it connects exactly one Squadron worker to exactly one workspace. The workspace shows as disconnected until that worker enrolls and maintains its connection.
+
+## Connect the worker
+
+Run `squadron engage` from the project directory. On first use, Squadron asks for the workspace WebSocket URL and runner credential, then stores them in `.squadron/command-center.json` with owner-only permissions.
+
+The connection profile is intentionally separate from HCL because the worker credential is a machine secret. Current Engage workers reconnect continuously and derive their workspace identity from that credential.
+
+See [Workspace Connection](/config/command_center) for profile details and the deprecated HCL compatibility block.

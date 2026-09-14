@@ -3,6 +3,8 @@ package wsbridge
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -10,6 +12,7 @@ import (
 	"github.com/mlund01/squadron-wire/protocol"
 
 	"squadron/config"
+	"squadron/config/runtimevars"
 )
 
 // Describe blocks in this file are picked up by the existing internal-package
@@ -76,5 +79,26 @@ var _ = Describe("Client.NotifyConfigReloaded", func() {
 			Expect(payload.Success).To(BeFalse())
 			Expect(payload.Error).To(Equal("invalid HCL: missing closing brace"))
 		})
+	})
+})
+
+var _ = Describe("workspace variable synchronization", func() {
+	BeforeEach(func() { runtimevars.Replace(nil) })
+
+	It("replaces the runtime snapshot and reloads configuration", func() {
+		dir := GinkgoT().TempDir()
+		Expect(os.WriteFile(filepath.Join(dir, "variables.hcl"), []byte(`
+variable "api_key" { secret = true }
+variable "region" { default = "local" }
+`), 0600)).To(Succeed())
+		client := NewClient(&config.Config{}, false, "waiting for variables", dir, nil, "test")
+		env, err := protocol.NewEvent("sync_variables", map[string]any{"values": map[string]string{"api_key": "stored"}})
+		Expect(err).NotTo(HaveOccurred())
+
+		response, err := client.handleSyncVariables(env)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(response).To(BeNil())
+		Expect(client.HasConfig()).To(BeTrue())
+		Expect(config.LoadVars()).To(Equal(map[string]string{"api_key": "stored"}))
 	})
 })

@@ -79,7 +79,7 @@ If you need broad SaaS coverage *right now*, n8n's pre-built node library is har
 
 ## What if you need both?
 
-It's reasonable to use n8n as the SaaS-integration layer and Squadron as the agent layer. Squadron exposes [webhook triggers](/missions/schedules) on missions, so an n8n flow can hand off to Squadron when it hits the AI step, then read structured outputs back. The reverse also works: Squadron can call out to an n8n webhook from a built-in HTTP tool.
+It's reasonable to use n8n as the SaaS-integration layer and Squadron as the agent layer. Squadron exposes [webhook triggers](/product/schedules) on missions, so an n8n flow can hand off to Squadron when it hits the AI step, then read structured outputs back. The reverse also works: Squadron can call out to an n8n webhook from a built-in HTTP tool.
 
 ## License differences worth noting
 
@@ -92,6 +92,6 @@ If license fit matters for your deployment, read both carefully.
 
 - [What is Squadron?](/)
 - [MCP tools](/config/mcp_tools) — pull any MCP server into Squadron
-- [Schedules & triggers](/missions/schedules) — cron and webhook entry points
+- [Scheduling missions](/product/schedules) — cron and webhook entry points
 - [Squadron vs LangGraph](/compare/langgraph)
 - [Squadron vs CrewAI](/compare/crewai)

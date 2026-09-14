@@ -1,0 +1,49 @@
+---
+title: Users and Service Principals
+---
+
+# Users and Service Principals
+
+Squadron distinguishes human users from automation identities. Both are created at the deployment level and receive access to individual workspaces.
+
+## Users
+
+A user has a name and an email address, which is also the login identifier for built-in authentication. Deployment administrators can invite users and change their status.
+
+Supported states are:
+
+- **Invited** — the account exists but setup is incomplete.
+- **Active** — the user can authenticate and exercise assigned permissions.
+- **Suspended** or **deactivated** — authentication and protected API access are denied.
+
+Built-in invitations are single-use and expire after seven days. The user sets a password when accepting the invitation. With OIDC, an invited account is bound to the provider identity after a successful login with the same verified email address.
+
+Deployment roles are intentionally small: `member` and `admin`. An administrator manages workspaces, users, service principals, and access assignments. Day-to-day permissions are assigned per workspace.
+
+## Service principals
+
+A service principal is a non-human identity for automation and unattended execution. Creating one generates a bearer credential that is shown once. Squadron stores only its hash.
+
+Administrators can:
+
+- Create and describe a service principal
+- Rotate its credential, revoking the previous credential
+- Disable or re-enable it
+- Add or remove it from workspaces
+- Grant individual missions it may run
+- Choose which workspace users may run as it
+
+A service principal does not receive a human workspace role. Its effective authority is the intersection of its workspace assignment and explicit mission grants.
+
+## Run as
+
+Granting a user access to a service principal does not grant blanket execution. A delegated run is eligible only when:
+
+1. The user has access to the workspace.
+2. The user is explicitly allowed to use that service principal in the workspace.
+3. The service principal is active.
+4. The service principal has an explicit Run grant for the mission.
+
+The run records both identities: the service principal is the effective execution identity, and the user is the initiator. This preserves accountability and lets the initiating user control the run.
+
+Authentication for plugin and MCP connections is a separate concern. Those credentials will eventually resolve against the effective run identity; they are not implied by workspace or mission permissions today.

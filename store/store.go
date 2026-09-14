@@ -160,6 +160,7 @@ type SessionStore interface {
 	// Chat-specific methods
 	CreateChatSession(agentName, model string) (string, error)
 	ListChatSessions(agentName string, limit, offset int) ([]SessionInfo, int, error)
+	ListAgentConversations(agentName string, limit int) ([]SessionInfo, error)
 }
 
 // SessionInfo describes a session
@@ -341,24 +342,24 @@ const (
 //   - AdditionalContext: optional markdown background the agent
 //     provides so the operator understands what they're answering.
 type HumanInputRequestRecord struct {
-	ID                string     `json:"id"`
-	MissionID         string     `json:"missionId,omitempty"`
-	TaskID            string     `json:"taskId,omitempty"`
-	ToolCallID        string     `json:"toolCallId"`
-	Question          string     `json:"question"`
-	ShortSummary      string     `json:"shortSummary,omitempty"`
-	AdditionalContext string     `json:"additionalContext,omitempty"`
-	Choices           []string   `json:"choices,omitempty"`
+	ID                string   `json:"id"`
+	MissionID         string   `json:"missionId,omitempty"`
+	TaskID            string   `json:"taskId,omitempty"`
+	ToolCallID        string   `json:"toolCallId"`
+	Question          string   `json:"question"`
+	ShortSummary      string   `json:"shortSummary,omitempty"`
+	AdditionalContext string   `json:"additionalContext,omitempty"`
+	Choices           []string `json:"choices,omitempty"`
 	// MultiSelect=true means the human may pick 1+ Choices instead of
 	// exactly one. The resolved Response is then a JSON-encoded
 	// string array (e.g. `["A","C"]`); when false, Response is a bare
 	// string. Free-text questions (no choices) are always single.
-	MultiSelect       bool       `json:"multiSelect,omitempty"`
-	State             string     `json:"state"`
-	RequestedAt       time.Time  `json:"requestedAt"`
-	ResolvedAt        *time.Time `json:"resolvedAt,omitempty"`
-	Response          *string    `json:"response,omitempty"`
-	ResponderUserID   *string    `json:"responderUserId,omitempty"`
+	MultiSelect     bool       `json:"multiSelect,omitempty"`
+	State           string     `json:"state"`
+	RequestedAt     time.Time  `json:"requestedAt"`
+	ResolvedAt      *time.Time `json:"resolvedAt,omitempty"`
+	Response        *string    `json:"response,omitempty"`
+	ResponderUserID *string    `json:"responderUserId,omitempty"`
 }
 
 // HumanInputFilter narrows ListRequests.
@@ -372,13 +373,12 @@ type HumanInputFilter struct {
 
 // CostTotals holds overall cost aggregates.
 type CostTotals struct {
-	TotalCost        float64 `json:"totalCost"`
-	InputCost        float64 `json:"inputCost"`
-	OutputCost       float64 `json:"outputCost"`
-	CacheReadCost    float64 `json:"cacheReadCost"`
-	CacheWriteCost   float64 `json:"cacheWriteCost"`
-	TotalTurns       int     `json:"totalTurns"`
-	TotalInputTokens int     `json:"totalInputTokens"`
-	TotalOutputTokens int    `json:"totalOutputTokens"`
+	TotalCost         float64 `json:"totalCost"`
+	InputCost         float64 `json:"inputCost"`
+	OutputCost        float64 `json:"outputCost"`
+	CacheReadCost     float64 `json:"cacheReadCost"`
+	CacheWriteCost    float64 `json:"cacheWriteCost"`
+	TotalTurns        int     `json:"totalTurns"`
+	TotalInputTokens  int     `json:"totalInputTokens"`
+	TotalOutputTokens int     `json:"totalOutputTokens"`
 }
-

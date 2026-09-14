@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"sort"
 	"sync"
 	"time"
@@ -21,15 +20,8 @@ var mcpCmd = &cobra.Command{
 	Short: "Manage MCP server connections",
 	Long: `Commands for managing OAuth-authenticated MCP server connections.
 
-These commands read the mcp "name" { ... } blocks from your HCL config to
-discover which servers exist, then interact with the vault to persist tokens
-and client credentials.`,
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		if !config.IsVaultInitialized() {
-			fmt.Fprintln(os.Stderr, "Error: Squadron not initialized. Run 'squadron init' first.")
-			os.Exit(1)
-		}
-	},
+These commands read the mcp "name" { ... } blocks from your HCL config.
+Connection credentials are supplied to the worker by Command Center.`,
 }
 
 func loadMCPSpecs(configPath string) (map[string]config.MCPServer, error) {
@@ -68,7 +60,7 @@ var mcpLoginCmd = &cobra.Command{
   2. Registers squadron as an OAuth client (DCR) if no cached credentials exist
   3. Starts a loopback HTTP server on an ephemeral port
   4. Opens your browser to the authorization URL
-  5. Waits for the redirect, exchanges the code, and stores the token in the vault
+  5. Waits for the redirect and exchanges the code for a process-local token
 
 A missing or expired token on a server that requires auth causes mission and
 chat runs to fail with a pointer to this command.`,
@@ -116,8 +108,7 @@ chat runs to fail with a pointer to this command.`,
 			return fmt.Errorf("mcp %q: %w", name, probeErr)
 		}
 
-		// Save client credentials to the vault so the orchestrator picks
-		// them up. CLI flags take precedence over HCL config values.
+		// Make client credentials available to the current worker process.
 		clientID, _ := cmd.Flags().GetString("client-id")
 		clientSecret, _ := cmd.Flags().GetString("client-secret")
 		if clientID == "" && spec.ClientID != "" {
@@ -143,7 +134,7 @@ chat runs to fail with a pointer to this command.`,
 			return err
 		}
 
-		fmt.Printf("\nAuthorization successful. Token stored in vault.\n")
+		fmt.Printf("\nAuthorization successful for this worker process.\n")
 		return nil
 	},
 }
@@ -151,7 +142,7 @@ chat runs to fail with a pointer to this command.`,
 var mcpLogoutCmd = &cobra.Command{
 	Use:   "logout <name>",
 	Short: "Forget the stored OAuth token for an MCP server",
-	Long: `Removes the vault entry for the given mcp server's access and refresh
+	Long: `Removes the process-local access and refresh token for the given MCP
 tokens. The cached client_id from dynamic client registration is preserved so
 that a subsequent 'squadron mcp login' skips the registration round-trip.`,
 	Args: cobra.ExactArgs(1),
@@ -170,7 +161,7 @@ var mcpStatusCmd = &cobra.Command{
 	Short: "Show connection status for every configured MCP server",
 	Long: `Lists every mcp "name" { ... } block and its auth state.
 
-For servers with a stored OAuth token, the state is derived from the vault
+For servers with a process-local OAuth token, the state is read from memory
 (no network call). For HTTP servers with no stored token, squadron probes
 the server to determine whether it requires auth or is open/anonymous.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -185,9 +176,9 @@ the server to determine whether it requires auth or is open/anonymous.`,
 			return nil
 		}
 
-		snap, err := oauth.LoadVaultSnapshot()
+		snap, err := oauth.LoadTokenSnapshot()
 		if err != nil {
-			return fmt.Errorf("reading vault: %w", err)
+			return fmt.Errorf("reading OAuth token state: %w", err)
 		}
 
 		names := make([]string, 0, len(specs))
@@ -288,7 +279,7 @@ func probeServers(servers []config.MCPServer, sp *spinner) map[string]probeResul
 	return results
 }
 
-func describeAuth(spec config.MCPServer, snap *oauth.VaultSnapshot, probes map[string]probeResult) (state, expires string) {
+func describeAuth(spec config.MCPServer, snap *oauth.TokenSnapshot, probes map[string]probeResult) (state, expires string) {
 	if spec.URL == "" {
 		return "n/a", "-"
 	}
@@ -296,7 +287,7 @@ func describeAuth(spec config.MCPServer, snap *oauth.VaultSnapshot, probes map[s
 		return "static header", "-"
 	}
 
-	// If we have a stored token, trust the vault — no probe needed.
+	// If the worker has a token, no probe is needed.
 	if snap.HasToken(spec.Name) {
 		tok, err := snap.Token(spec.Name)
 		if err != nil || tok == nil {

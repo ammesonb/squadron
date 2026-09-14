@@ -1,5 +1,14 @@
 package store
 
+const (
+	// Tool media parts persist ordinary model-facing image/document blocks
+	// together with the tool_use ID that produced them. On session restore they
+	// become regular media blocks again; the extra association is retained for
+	// operator UIs and audit APIs.
+	PartTypeToolImage    = "tool_image"
+	PartTypeToolDocument = "tool_document"
+)
+
 // MessagePart is a single content block of a session message, expressed
 // as the atomic columns of the session_message_parts table. This type is
 // deliberately neutral — it mirrors the table schema row-for-row and does
@@ -12,10 +21,12 @@ package store
 //   - "text"          → Text
 //   - "image"         → ImageData, ImageMediaType
 //   - "document"      → DocumentData, DocumentMediaType, DocumentFilename
+//   - "tool_image"    → ToolUseID, ImageData, ImageMediaType
+//   - "tool_document" → ToolUseID, DocumentData, DocumentMediaType, DocumentFilename
 //   - "tool_use"      → ToolUseID, ToolName, ToolInputJSON, ThoughtSignature
 //   - "tool_result"   → ToolUseID, Text, IsError
 //   - "thinking"      → Text, ThinkingSignature, ThinkingRedactedData,
-//                       ProviderID, EncryptedContent
+//     ProviderID, EncryptedContent
 //   - "provider_raw"  → ProviderName, ProviderType, ProviderDataJSON
 //
 // Pointers (*bool) are used where NULL must be distinguishable from the

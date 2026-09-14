@@ -4,102 +4,53 @@ title: Variables
 
 # Variables
 
-Variables store configuration values that can be referenced throughout your HCL files.
+Variables separate deployment-specific values from reviewable HCL configuration. HCL declares the name, default, and whether a value is sensitive. Command Center owns the stored value.
 
-Anything you set via `squadron vars set` is automatically available as `vars.<name>` — no `variable` block required. Declaring a `variable` block is only needed when you want to attach metadata like `secret` (for masking) or `default` (fallback when the vault has no value).
-
-## Setting Values
-
-Use the CLI to set variable values:
-
-```bash
-squadron vars set api_key sk-ant-...
-squadron vars set app_name production-app
-```
-
-Values are encrypted at rest in `.squadron/vars.vault`. The vault is initialized automatically the first time you run `squadron engage`. Once set, reference them as `vars.api_key` / `vars.app_name` from any HCL file.
-
-## Defining Variables (optional)
-
-Use `variable` blocks when you want to mark a value as a secret or supply a default:
-
-```hcl
-variable "api_key" {
-  secret = true  # Mask value in CLI / UI output
-}
-
-variable "app_name" {
-  default = "myapp"  # Used only if the vault has no value
-}
-
-variable "max_retries" {
-  default = 3
-}
-```
-
-## Attributes
-
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `secret` | bool | If true, value is masked in CLI / UI output |
-| `default` | any | Default value if not set via `squadron vars set` |
-
-## Referencing Variables
-
-Use `vars.name` to reference a variable:
-
-```hcl
-model "anthropic" {
-  api_key = vars.api_key
-}
-
-agent "assistant" {
-  personality = "Assistant for ${vars.app_name}"
-}
-```
-
-## Resolution Order
-
-1. Value set via `squadron vars set` (encrypted in `.squadron/vars.vault`)
-2. Default value from `variable` block (if declared)
-3. Empty string if a `variable` block is declared with no default and no vault value
-4. HCL evaluation error if `vars.<name>` is referenced but neither the vault nor a `variable` block has it
-
-## Best Practices
-
-### Secrets
-
-Always mark sensitive values as secrets:
+## Declare variables in HCL
 
 ```hcl
 variable "anthropic_api_key" {
   secret = true
 }
 
-variable "database_password" {
-  secret = true
-}
-```
-
-### Defaults for Non-Sensitive Values
-
-Provide defaults for convenience:
-
-```hcl
 variable "environment" {
   default = "development"
 }
+```
 
-variable "log_level" {
-  default = "info"
+Variable names use lowercase letters, digits, and underscores and cannot start with a digit.
+
+## Set workspace values
+
+Open the workspace's **Settings** page in Command Center and add or update a variable. Managers and administrators can manage values. Secret values are masked by default. A manager or administrator can explicitly reveal a current value; every reveal is recorded in the audit log and the response is not cached by the browser.
+
+Command Center encrypts every value before writing it to its database. A connected workspace runner receives the workspace's complete value set over its authenticated connection and keeps it only in process memory. A disconnected runner receives the current set when it reconnects.
+
+## Reference variables
+
+```hcl
+model "anthropic" {
+  api_key = vars.anthropic_api_key
+}
+
+agent "assistant" {
+  personality = "Assistant for ${vars.environment}"
 }
 ```
 
-### Naming
+## Resolution order
 
-Variable names — like all [block names](/config/overview#block-naming) — must use only lowercase letters, digits, and underscores, and must not start with a digit. `squadron verify` rejects anything else:
+1. The workspace value stored in Command Center.
+2. The `default` from a matching `variable` block.
+3. An empty string when a declared variable has neither a stored value nor a default.
+4. An HCL evaluation error when an undeclared and unset variable is referenced.
 
-```hcl
-variable "anthropic_api_key" { }  # Good
-variable "anthropicApiKey" { }    # Error — uppercase
-```
+## Security boundary
+
+- The Command Center database is the system of record.
+- Values are encrypted with a key derived from the deployment master key.
+- Encryption binds a value to both its workspace and variable name.
+- The worker does not persist workspace variable values.
+- Mark sensitive declarations with `secret = true` so Command Center masks them in operator views until an authorized operator explicitly reveals them.
+
+MCP and plugin authorization use their own connection-auth model; they are not workspace variables.

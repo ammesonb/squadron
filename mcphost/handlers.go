@@ -213,13 +213,13 @@ func (h *handlers) listRuns(_ context.Context, req mcp.CallToolRequest) (*mcp.Ca
 	}
 
 	type runSummary struct {
-		ID          string     `json:"id"`
-		MissionName string     `json:"missionName"`
-		Status      string     `json:"status"`
-		StartedAt   any        `json:"startedAt"`
-		FinishedAt  any        `json:"finishedAt,omitempty"`
-		Inputs      any        `json:"inputs,omitempty"`
-		TaskCount   int        `json:"taskCount"`
+		ID          string           `json:"id"`
+		MissionName string           `json:"missionName"`
+		Status      string           `json:"status"`
+		StartedAt   any              `json:"startedAt"`
+		FinishedAt  any              `json:"finishedAt,omitempty"`
+		Inputs      any              `json:"inputs,omitempty"`
+		TaskCount   int              `json:"taskCount"`
 		Datasets    []datasetSummary `json:"datasets,omitempty"`
 	}
 
@@ -607,10 +607,7 @@ func maskSecret(value string) string {
 func (h *handlers) listVars(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	cfg := h.deps.Config()
 
-	fileVars, err := config.LoadVarsFromFile()
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to load variables: %v", err)), nil
-	}
+	fileVars := config.LoadVars()
 
 	var cfgVars []config.Variable
 	if cfg != nil {
@@ -659,7 +656,7 @@ func (h *handlers) listVars(_ context.Context, _ mcp.CallToolRequest) (*mcp.Call
 		details = append(details, d)
 	}
 
-	// Vault-only keys have no declared `secret` flag; show the full value
+	// Undeclared runtime keys have no `secret` flag; show the full value
 	// like any other non-secret. Declare a `variable` block with
 	// `secret = true` to opt into masking.
 	for name, val := range fileVars {
@@ -688,10 +685,7 @@ func (h *handlers) getVar(_ context.Context, req mcp.CallToolRequest) (*mcp.Call
 
 	cfg := h.deps.Config()
 
-	fileVars, err := config.LoadVarsFromFile()
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to load variables: %v", err)), nil
-	}
+	fileVars := config.LoadVars()
 
 	// Find variable definition in config
 	var varDef *config.Variable
@@ -705,7 +699,7 @@ func (h *handlers) getVar(_ context.Context, req mcp.CallToolRequest) (*mcp.Call
 	}
 
 	if varDef == nil {
-		// Fall back to the vault — vault keys don't require a `variable` block.
+		// Fall back to the runtime values supplied by Command Center.
 		// Without a declared `secret` flag, return the value unmasked.
 		fileVal, ok := fileVars[name]
 		if !ok {
@@ -760,9 +754,9 @@ func (h *handlers) mcpStatus(_ context.Context, _ mcp.CallToolRequest) (*mcp.Cal
 		return mcp.NewToolResultError("config not loaded"), nil
 	}
 
-	snap, err := oauth.LoadVaultSnapshot()
+	snap, err := oauth.LoadTokenSnapshot()
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to read vault: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("failed to read OAuth token state: %v", err)), nil
 	}
 
 	type serverStatus struct {
@@ -786,7 +780,7 @@ func (h *handlers) mcpStatus(_ context.Context, _ mcp.CallToolRequest) (*mcp.Cal
 	return toolResult(map[string]any{"servers": servers})
 }
 
-func describeMCPAuth(spec config.MCPServer, snap *oauth.VaultSnapshot) (state, expires string) {
+func describeMCPAuth(spec config.MCPServer, snap *oauth.TokenSnapshot) (state, expires string) {
 	if spec.URL == "" {
 		return "n/a", "-"
 	}

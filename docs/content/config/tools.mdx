@@ -47,7 +47,7 @@ agent "concierge" {
 }
 ```
 
-The agent calls `ask` with the question, optional choices, and optional context. The question appears in the Command Center Inbox and on any connected gateway (e.g. Discord). The tool blocks until a human answers or the optional timeout fires.
+The agent calls `ask` with the question, optional choices, and optional context. The question appears in the Squadron Inbox and on any connected gateway, such as Discord. The tool blocks until a human answers or the optional timeout fires.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -58,11 +58,11 @@ The agent calls `ask` with the question, optional choices, and optional context.
 | `multi_select` | bool | no | When `true`, the human picks 1+ of `choices` rather than exactly one. The response arrives as a JSON-encoded array string (e.g. `["A","C"]`) — parse it. Has no effect without `choices`. |
 | `timeout_seconds` | number | no | Max seconds to wait. Omit for indefinite wait. |
 
-The tool returns the human's answer as a plain string for single-select / free-text, or a JSON array string for multi-select. If no Command Center / gateway is attached, the tool returns `[no human available]` immediately so the agent can proceed without blocking.
+The tool returns the human's answer as a plain string for single-select / free-text, or a JSON array string for multi-select. If no Squadron product or gateway is attached, the tool returns `[no human available]` immediately so the agent can proceed without blocking.
 
 A failed or stopped mission auto-resolves any still-open `ask` calls with a sentinel response, so the Inbox and connected gateways don't linger on dead questions.
 
-See [Gateways](/config/gateways) for surfacing questions outside the Command Center (Discord, Slack, …).
+See [Gateways](/config/gateways) for surfacing questions outside the Squadron product (Discord, Slack, …).
 
 ## Custom Tools
 

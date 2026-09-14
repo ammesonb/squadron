@@ -45,7 +45,7 @@ then run them with simple commands.
 
 Get started:
   squadron quickstart     Interactive setup wizard
-  squadron engage         Start Squadron with command center UI
+  squadron engage         Start Squadron and connect its workspace worker
   squadron verify <path>  Validate your configuration
   squadron chat <agent>   Chat with an agent
   squadron mission <name> Run a mission`, banner, Version)

@@ -4,57 +4,57 @@ title: Quick Start
 
 # Quick Start
 
-Get from zero to a running agent in under a minute.
+Create a Squadron project, connect its worker, and run a mission.
 
-## 1. Create a Project Directory
+## 1. Create a project directory
 
 ```bash
-mkdir my-squadron && cd my-squadron
+mkdir my-squadron
+cd my-squadron
 ```
 
-## 2. Launch Squadron
+## 2. Create a workspace
+
+In the Squadron product, create a workspace and open its connection details. Keep the WebSocket URL and runner credential ready. Each credential enrolls one worker into one workspace.
+
+## 3. Engage Squadron
 
 ```bash
 squadron engage
 ```
 
-On a fresh directory, `engage` runs an interactive wizard that:
+On a fresh interactive project, the wizard:
 
-- Asks which LLM provider you want (Anthropic, OpenAI, or Gemini)
-- Prompts for your API key and stores it in an encrypted vault
-- Optionally generates a starter mission (`hn_research`) that fetches the Hacker News front page, researches the top 3 stories in parallel, and produces an executive summary
+- Selects an LLM provider
+- Optionally generates a starter mission
+- Prompts for the workspace WebSocket URL and runner credential
+- Starts the worker and installs its user-level system service
 
-When the wizard finishes, Squadron runs in the background and opens the command center UI in your browser at `http://localhost:8080`. Squadron also installs a system service (launchd on macOS, systemd on Linux) so it starts automatically on boot.
+The machine credential is saved under `.squadron/`, not in HCL.
+After the worker connects, add the provider key from the workspace's **Settings** page. Command Center stores workspace values in its database and delivers them to the worker in memory.
 
-## 3. Try It Out
+## 4. Run the mission
 
-From the command center UI you can:
+Open the connected workspace in the Squadron product, choose a mission, provide its inputs, and select an eligible execution identity.
 
-- Run missions with input forms and watch execution live
-- Edit HCL config files in the browser (with validation)
-- Manage variables
-- Browse mission run history with task-level detail
-
-Or run missions from the terminal:
+You can also run locally from the terminal:
 
 ```bash
 squadron mission hn_research
 ```
 
-## 4. Stopping
+## 5. Stop the worker
 
-Run from the same directory you engaged from:
+From the same project directory:
 
 ```bash
 squadron disengage
 ```
 
-This stops the daemon and removes the system service so it no longer starts on boot.
+## What's next
 
-## What's Next
-
-- [engage](/cli/engage) — How the daemon works, all flags, remote command center setup
-- [Agents](/config/agents) — Configure agent behavior
-- [Tools](/config/tools) — Add custom tools
-- [Missions](/missions/overview) — Build multi-step pipelines
-- [Docker](/getting-started/docker) — Run Squadron in containers
+- [Squadron Product](/product/overview)
+- [Setup and Workspaces](/product/setup)
+- [Configuration Overview](/config/overview)
+- [Missions](/config/missions/overview)
+- [engage](/config/cli/engage)

@@ -77,6 +77,12 @@ func partFromContentBlock(b llm.ContentBlock) store.MessagePart {
 // the row carries a Type the current build doesn't recognize, so we fail
 // fast rather than silently dropping content on resume.
 func contentBlockFromPart(p store.MessagePart) (llm.ContentBlock, error) {
+	if p.Type == store.PartTypeToolImage {
+		return llm.ContentBlock{Type: llm.ContentTypeImage, ImageData: &llm.ImageBlock{Data: p.ImageData, MediaType: p.ImageMediaType}}, nil
+	}
+	if p.Type == store.PartTypeToolDocument {
+		return llm.ContentBlock{Type: llm.ContentTypeDocument, Document: &llm.DocumentBlock{Data: p.DocumentData, MediaType: p.DocumentMediaType, Filename: p.DocumentFilename}}, nil
+	}
 	t := llm.ContentType(p.Type)
 	b := llm.ContentBlock{Type: t}
 	switch t {

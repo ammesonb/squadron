@@ -17,7 +17,7 @@ Both **CrewAI** and Squadron are built around the metaphor of a team of role-pla
 | **State persistence** | Built-in, auto-resume on crash | Manual / not first-class |
 | **LLM providers** | Anthropic, OpenAI, Gemini, Ollama, all built in | LiteLLM-backed (broad coverage) |
 | **Extension model** | Native Go/Python plugins (gRPC subprocess, auto-built) + MCP (both directions) + built-in tools | CrewAI Tools library + custom Python classes |
-| **Scheduling / webhooks** | First-class `schedule` / `trigger` blocks | External orchestrator required |
+| **Scheduling / webhooks** | Product-managed schedules + configured webhook triggers | External orchestrator required |
 | **Budgets** | Declarative token + dollar caps per mission / task | None built-in |
 | **Reviewability** | Whole workflow is one HCL file | Spread across Python files |
 | **License** | MIT | MIT |
@@ -30,7 +30,7 @@ CrewAI's strengths are a clean Python API, a popular tools library, and a thrivi
 
 ## What is Squadron?
 
-[Squadron](/) is a declarative framework for multi-agent workflows where the entire pipeline — agents, tools, models, the task graph, conditional branches, schedules, budgets — is defined in HCL config. The runtime is a single Go binary that reads the config, runs the workflow, and persists state automatically.
+[Squadron](/) is a declarative framework for multi-agent workflows where agents, tools, models, the task graph, conditional branches, and budgets are defined in HCL. The product adds durable schedules, access control, and run operations around the worker runtime.
 
 ## Side-by-side
 
@@ -140,7 +140,7 @@ Compared to CrewAI's tool model — where tools are Python classes (`BaseTool` s
 ## See also
 
 - [What is Squadron?](/)
-- [Missions overview](/missions/overview)
-- [The Harness](/missions/harness)
+- [Missions overview](/config/missions/overview)
+- [The Harness](/config/missions/harness)
 - [Squadron vs LangGraph](/compare/langgraph)
 - [Squadron vs AutoGen](/compare/autogen)
