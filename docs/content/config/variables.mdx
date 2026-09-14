@@ -9,7 +9,7 @@ Variables separate deployment-specific values from reviewable HCL configuration.
 ## Declare variables in HCL
 
 ```hcl
-variable "anthropic_api_key" {
+variable "database_password" {
   secret = true
 }
 
@@ -29,12 +29,12 @@ Command Center encrypts every value before writing it to its database. A connect
 ## Reference variables
 
 ```hcl
-model "anthropic" {
-  api_key = vars.anthropic_api_key
-}
-
 agent "assistant" {
   personality = "Assistant for ${vars.environment}"
+}
+
+mcp "internal" {
+  url = "https://tools.${vars.environment}.example.com/mcp"
 }
 ```
 
@@ -53,4 +53,4 @@ agent "assistant" {
 - The worker does not persist workspace variable values.
 - Mark sensitive declarations with `secret = true` so Command Center masks them in operator views until an authorized operator explicitly reveals them.
 
-MCP and plugin authorization use their own connection-auth model; they are not workspace variables.
+Model, MCP, and plugin authorization use their own connection-auth models; they are not workspace variables.

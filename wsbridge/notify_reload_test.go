@@ -12,6 +12,7 @@ import (
 	"github.com/mlund01/squadron-wire/protocol"
 
 	"squadron/config"
+	"squadron/config/runtimemodels"
 	"squadron/config/runtimevars"
 )
 
@@ -79,6 +80,28 @@ var _ = Describe("Client.NotifyConfigReloaded", func() {
 			Expect(payload.Success).To(BeFalse())
 			Expect(payload.Error).To(Equal("invalid HCL: missing closing brace"))
 		})
+	})
+})
+
+var _ = Describe("model connection synchronization", func() {
+	BeforeEach(func() { runtimemodels.Replace(nil) })
+
+	It("replaces provider credentials and reloads a model_provider allow-list", func() {
+		dir := GinkgoT().TempDir()
+		Expect(os.WriteFile(filepath.Join(dir, "models.hcl"), []byte(`
+model_provider "anthropic" { models = ["claude_haiku_4_5"] }
+storage { backend = "sqlite" }
+`), 0600)).To(Succeed())
+		client := NewClient(&config.Config{}, false, "waiting for model connections", dir, nil, "test")
+		env, err := protocol.NewEvent("sync_model_connections", map[string]any{"connections": map[string]any{"anthropic": map[string]any{"provider": "anthropic", "apiKey": "runtime-key", "promptCaching": true}}})
+		Expect(err).NotTo(HaveOccurred())
+		response, err := client.handleSyncModelConnections(env)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(response).To(BeNil())
+		Expect(client.HasConfig()).To(BeTrue())
+		connection, ok := runtimemodels.Get("anthropic")
+		Expect(ok).To(BeTrue())
+		Expect(connection.APIKey).To(Equal("runtime-key"))
 	})
 })
 

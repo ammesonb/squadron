@@ -4,16 +4,15 @@ title: Supported Models
 
 # Supported Models
 
-Every model in this list works out of the box with Squadron. Add your API key to a `model` block and reference any of the keys below as `models.<config_name>.<key>`. See [Models](/config/models) for configuration details.
+Every model in this list works with Squadron's built-in providers. Configure the credential in Command Center, allow the keys you need in a `model_provider` block, and reference them as `models.<connection_name>.<key>`. See [Model providers](/config/models) for details.
 
-Prices are per 1M tokens, last verified April 2026. Use `pricing` blocks on your `model` config to override them.
+Prices are per 1M tokens, last verified April 2026.
 
 ## Anthropic
 
 ```hcl
-model "anthropic" {
-  provider = "anthropic"
-  api_key  = vars.anthropic_api_key
+model_provider "anthropic" {
+  models = ["claude_sonnet_4_6"]
 }
 
 # Reference: models.anthropic.claude_sonnet_4_6
@@ -35,9 +34,8 @@ model "anthropic" {
 ## OpenAI
 
 ```hcl
-model "openai" {
-  provider = "openai"
-  api_key  = vars.openai_api_key
+model_provider "openai" {
+  models = ["gpt_5_5"]
 }
 
 # Reference: models.openai.gpt_5_5
@@ -71,9 +69,8 @@ model "openai" {
 ## Google Gemini
 
 ```hcl
-model "gemini" {
-  provider = "gemini"
-  api_key  = vars.gemini_api_key
+model_provider "gemini" {
+  models = ["gemini_2_5_pro"]
 }
 
 # Reference: models.gemini.gemini_2_5_pro
@@ -93,15 +90,13 @@ model "gemini" {
 | `gemini_1_5_pro` | `gemini-1.5-pro` | $1.25 | $5.00 | $0.3125 | $1.25 |
 | `gemini_1_5_flash` | `gemini-1.5-flash` | $0.075 | $0.30 | $0.01875 | $0.075 |
 
-## Ollama (local models)
+## OpenAI-compatible models
 
-The Ollama provider connects to any OpenAI-compatible local inference server — Ollama itself, vLLM, llama.cpp, LM Studio, and others. Because Squadron can't know what models you have installed, you define them with `aliases` instead of picking from a built-in list.
+An OpenAI-compatible connection can target Ollama, vLLM, llama.cpp, LM Studio, and similar servers. Configure its endpoint in Command Center, then map stable HCL keys to the exact served model identifiers.
 
 ```hcl
-model "local" {
-  provider = "ollama"
-  base_url = "http://localhost:11434/v1"
-  aliases = {
+model_provider "local" {
+  models = {
     gemma4     = "gemma4"
     gemma4_26b = "gemma4:26b"
     nemotron   = "nemotron-cascade-2:30b"
@@ -115,5 +110,4 @@ Token usage is tracked for every turn, but dollar cost is $0 — you're paying f
 
 ## Don't see the model you want?
 
-- Cloud providers (Anthropic, OpenAI, Gemini) support custom [aliases](/config/models#custom-aliases-for-cloud-providers) — you can point any HCL-friendly key at any API model name the provider exposes, even ones that aren't in the tables above.
-- For brand new releases that don't yet have built-in pricing, add a [pricing override](/config/models#pricing-overrides) on your `model` block and Squadron will use your numbers for cost tracking.
+- For a provider model that is not yet in the built-in registry, use an explicit key-to-model mapping as described in [Model providers](/config/models#openai-compatible-providers).

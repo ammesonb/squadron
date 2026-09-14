@@ -13,6 +13,7 @@ import (
 	"github.com/zclconf/go-cty/cty"
 
 	schemafunc "squadron/config/functions"
+	"squadron/config/runtimemodels"
 	"squadron/internal/paths"
 	squadronmcp "squadron/mcp"
 	"squadron/mcp/oauth"
@@ -836,7 +837,8 @@ func loadFromFiles(configDir string, files []string) (*Config, error) {
 		content, _, diags := hclFile.Body.PartialContent(&hcl.BodySchema{
 			Blocks: []hcl.BlockHeaderSchema{
 				{Type: "variable", LabelNames: []string{"name"}},
-				{Type: "model", LabelNames: []string{"name"}},
+				{Type: "model", LabelNames: []string{"name"}}, // legacy v1 syntax
+				{Type: "model_provider", LabelNames: []string{"name"}},
 				{Type: "agent", LabelNames: []string{"name"}},
 				{Type: "tool", LabelNames: []string{"name"}},
 				{Type: "plugin", LabelNames: []string{"name"}},
@@ -862,7 +864,7 @@ func loadFromFiles(configDir string, files []string) (*Config, error) {
 			switch block.Type {
 			case "variable":
 				pb.Variables = append(pb.Variables, block)
-			case "model":
+			case "model", "model_provider":
 				pb.Models = append(pb.Models, block)
 			case "agent":
 				pb.Agents = append(pb.Agents, block)
@@ -1058,11 +1060,14 @@ func loadFromFiles(configDir string, files []string) (*Config, error) {
 		}
 	}
 
-	// parseModelBlock parses a model block with optional pricing sub-blocks.
+	// parseModelBlock parses the v2 model_provider allow-list. Legacy model
+	// blocks remain readable during migration, but new configuration keeps
+	// credentials and endpoints in Command Center.
 	parseModelBlock := func(block *hcl.Block, ctx *hcl.EvalContext) (*Model, error) {
 		content, _, diags := block.Body.PartialContent(&hcl.BodySchema{
 			Attributes: []hcl.AttributeSchema{
-				{Name: "provider", Required: true},
+				{Name: "models"},
+				{Name: "provider"},
 				{Name: "aliases"},
 				{Name: "api_key"},
 				{Name: "base_url"},
@@ -1077,12 +1082,63 @@ func loadFromFiles(configDir string, files []string) (*Config, error) {
 		}
 
 		m := &Model{Name: block.Labels[0]}
+		if attr, ok := content.Attributes["models"]; ok {
+			connection, exists := runtimemodels.Get(m.Name)
+			if !exists {
+				return nil, fmt.Errorf("connection is not configured in Command Center")
+			}
+			m.Provider = Provider(connection.Provider)
+			m.APIKey = connection.APIKey
+			m.BaseURL = connection.BaseURL
+			m.PromptCaching = new(bool)
+			*m.PromptCaching = connection.PromptCaching
+			m.Restricted = true
+			m.Aliases = make(map[string]string)
+			modelsVal, d := attr.Expr.Value(ctx)
+			if d.HasErrors() {
+				return nil, d
+			}
+			switch {
+			case modelsVal.Type().IsTupleType() || modelsVal.Type().IsListType() || modelsVal.Type().IsSetType():
+				supported, knownProvider := SupportedModels[m.Provider]
+				if !knownProvider || m.Provider == ProviderOpenAICompatible {
+					return nil, fmt.Errorf("provider %q requires a key-to-model mapping", m.Provider)
+				}
+				for it := modelsVal.ElementIterator(); it.Next(); {
+					_, value := it.Element()
+					key := value.AsString()
+					info, ok := supported[key]
+					if !ok {
+						return nil, fmt.Errorf("model %q is not supported by provider %q", key, m.Provider)
+					}
+					m.Aliases[key] = info.APIName
+				}
+			case modelsVal.Type().IsObjectType() || modelsVal.Type().IsMapType():
+				for it := modelsVal.ElementIterator(); it.Next(); {
+					key, value := it.Element()
+					m.Aliases[key.AsString()] = value.AsString()
+				}
+			default:
+				return nil, fmt.Errorf("models must be a list of supported keys or a key-to-model mapping")
+			}
+			if len(m.Aliases) == 0 {
+				return nil, fmt.Errorf("models must contain at least one allowed model")
+			}
+			return m, nil
+		}
 
-		providerVal, d := content.Attributes["provider"].Expr.Value(ctx)
+		providerAttr, ok := content.Attributes["provider"]
+		if !ok {
+			return nil, fmt.Errorf("models is required")
+		}
+		providerVal, d := providerAttr.Expr.Value(ctx)
 		if d.HasErrors() {
 			return nil, d
 		}
 		m.Provider = Provider(providerVal.AsString())
+		if m.Provider == "ollama" {
+			m.Provider = ProviderOpenAICompatible
+		}
 
 		if attr, ok := content.Attributes["aliases"]; ok {
 			aliasesVal, d := attr.Expr.Value(ctx)

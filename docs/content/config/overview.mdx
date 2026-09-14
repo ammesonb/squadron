@@ -30,7 +30,7 @@ Squadron uses **staged evaluation** to resolve references:
 
 1. **Variables** - Load `variable` blocks (no context needed)
 2. **Plugins** - Load `plugin` blocks with `vars` context
-3. **Models** - Load `model` blocks with `vars` + `plugins` context
+3. **Model providers** - Resolve `model_provider` allow-lists against Command Center connections
 4. **Tools** - Load custom `tool` blocks with `vars` + `models` + `plugins` context
 5. **Agents** - Load `agent` blocks with `vars` + `models` + `tools` + `plugins` context
 6. **Missions** - Load `mission` blocks with full context
@@ -38,8 +38,8 @@ Squadron uses **staged evaluation** to resolve references:
 This enables expressions like:
 
 ```hcl
-model "anthropic" {
-  api_key = vars.anthropic_api_key  # Reference a variable
+model_provider "anthropic" {
+  models = ["claude_sonnet_4_6"]
 }
 
 agent "assistant" {
@@ -53,7 +53,7 @@ agent "assistant" {
 | Block | Purpose |
 |-------|---------|
 | `variable` | Define configuration variables |
-| `model` | Configure LLM providers |
+| `model_provider` | Allow models from a Command Center connection |
 | `agent` | Define AI agents |
 | `skill` | Define on-demand capability packages for agents |
 | `tool` | Create custom tools |
@@ -66,7 +66,7 @@ agent "assistant" {
 
 ## Block Naming
 
-Block labels become HCL reference identifiers (e.g. `models.anthropic`, `agents.researcher`), so they must be valid identifiers. Names may contain **only lowercase letters, digits, and underscores**, and must not start with a digit. This applies to every named block — `variable`, `model`, `agent`, `tool`, `plugin`, `mcp`, `skill`, `memory`, `mission`, and mission-scoped `task`, `dataset`, and `agent` blocks.
+Block labels become HCL reference identifiers (e.g. `models.anthropic`, `agents.researcher`), so they must be valid identifiers. Names may contain **only lowercase letters, digits, and underscores**, and must not start with a digit. This applies to every named block — `variable`, `model_provider`, `agent`, `tool`, `plugin`, `mcp`, `skill`, `memory`, `mission`, and mission-scoped `task`, `dataset`, and `agent` blocks.
 
 ```hcl
 agent "browser_navigator" { }   # Good
@@ -88,7 +88,6 @@ HCL supports expressions for dynamic values:
 description = "Agent for ${vars.app_name}"
 
 # References
-api_key = vars.anthropic_api_key
 model = models.anthropic.claude_sonnet_4
 
 # Lists

@@ -15,6 +15,7 @@ import (
 
 	"squadron/agent"
 	"squadron/config"
+	"squadron/config/runtimemodels"
 	"squadron/mission"
 	"squadron/notification"
 	"squadron/store"
@@ -58,6 +59,29 @@ func (c *Client) registerHandlers() {
 	c.handlers[protocol.TypeGetHumanInputs] = c.handleGetHumanInputs
 	c.handlers[protocol.TypeResolveHumanInput] = c.handleResolveHumanInput
 	c.handlers["sync_variables"] = c.handleSyncVariables
+	c.handlers["sync_model_connections"] = c.handleSyncModelConnections
+}
+
+type syncModelConnectionsPayload struct {
+	Connections map[string]runtimemodels.Connection `json:"connections"`
+}
+
+func (c *Client) handleSyncModelConnections(env *protocol.Envelope) (*protocol.Envelope, error) {
+	var payload syncModelConnectionsPayload
+	if err := protocol.DecodePayload(env, &payload); err != nil {
+		return nil, fmt.Errorf("decode sync_model_connections: %w", err)
+	}
+	runtimemodels.Replace(payload.Connections)
+	if err := c.ReloadConfig(); err != nil {
+		c.cfgMu.Lock()
+		c.cfgReady = false
+		c.cfgError = err.Error()
+		c.cfgMu.Unlock()
+		c.NotifyConfigReloaded(err)
+		return nil, nil
+	}
+	c.NotifyConfigReloaded(nil)
+	return nil, nil
 }
 
 type syncVariablesPayload struct {

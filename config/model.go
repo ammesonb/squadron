@@ -5,10 +5,12 @@ import "fmt"
 type Provider string
 
 const (
-	ProviderOpenAI    Provider = "openai"
-	ProviderGemini    Provider = "gemini"
-	ProviderAnthropic Provider = "anthropic"
-	ProviderOllama    Provider = "ollama"
+	ProviderOpenAI           Provider = "openai"
+	ProviderGemini           Provider = "gemini"
+	ProviderAnthropic        Provider = "anthropic"
+	ProviderOpenAICompatible Provider = "openai_compatible"
+	// ProviderOllama remains as a source-compatible name for the OpenAI-compatible adapter.
+	ProviderOllama Provider = ProviderOpenAICompatible
 )
 
 // ModelInfo describes a single registered model: the wire-name sent to the
@@ -33,8 +35,9 @@ type ModelInfo struct {
 // SupportedModels is the registry of every model Squadron ships built-in
 // support for. Provider → HCL-friendly key → ModelInfo.
 //
-// HCL refs (`models.openai.gpt_5`) resolve through this table. Ollama keeps
-// an empty map because users register their own models via `aliases`.
+// HCL refs (`models.openai.gpt_5`) resolve through this table.
+// OpenAI-compatible connections keep an empty map because their HCL block
+// explicitly maps stable keys to provider-specific wire model names.
 var SupportedModels = map[Provider]map[string]ModelInfo{
 	ProviderOpenAI: {
 		// Reasoning models — gpt-5 family, o-series 3 and 4. o1 is
@@ -101,9 +104,9 @@ var SupportedModels = map[Provider]map[string]ModelInfo{
 		// Claude 3.5 Sonnet was retired 2025-10-28; Claude 3.5 Haiku was
 		// retired 2026-02-19. Both removed from the registry.
 	},
-	// Ollama models are user-registered via `aliases` on the model block.
+	// OpenAI-compatible models are explicitly mapped in each model_provider block.
 	// Capability flags can't be inferred and aren't currently surfaced —
-	// `reasoning = "..."` on an Ollama agent is a no-op + warning.
+	// `reasoning = "..."` on an OpenAI-compatible agent is a no-op + warning.
 	ProviderOllama: {},
 }
 
@@ -135,6 +138,7 @@ type Model struct {
 	BaseURL       string                         `hcl:"base_url,optional"`
 	PromptCaching *bool                          `hcl:"prompt_caching,optional"`
 	Pricing       map[string]*ModelPricingConfig `json:"-"` // model name → pricing override
+	Restricted    bool                           `hcl:"-"`  // true when HCL explicitly supplied models
 }
 
 // AvailableModels returns all HCL keys available for this provider mapped to
@@ -142,9 +146,11 @@ type Model struct {
 // Aliases (the Aliases map wins on conflict).
 func (m *Model) AvailableModels() map[string]string {
 	result := make(map[string]string)
-	if supported, ok := SupportedModels[m.Provider]; ok {
-		for key, info := range supported {
-			result[key] = info.APIName
+	if !m.Restricted {
+		if supported, ok := SupportedModels[m.Provider]; ok {
+			for key, info := range supported {
+				result[key] = info.APIName
+			}
 		}
 	}
 	for key, apiName := range m.Aliases {
@@ -155,7 +161,7 @@ func (m *Model) AvailableModels() map[string]string {
 
 // ModelInfoByAPIName looks up the registered ModelInfo for a given API name
 // on this model's provider. Returns ok=false if the API name isn't registered
-// (e.g. a user-aliased Ollama model). Linear scan; the registry is small and
+// (e.g. a mapped OpenAI-compatible model). Linear scan; the registry is small and
 // this is only called at agent construction.
 func (m *Model) ModelInfoByAPIName(apiName string) (ModelInfo, bool) {
 	if supported, ok := SupportedModels[m.Provider]; ok {
@@ -189,12 +195,12 @@ func (m *Model) Validate() error {
 		return fmt.Errorf("unsupported provider '%s'", m.Provider)
 	}
 
-	if m.Provider == ProviderOllama {
+	if m.Provider == ProviderOpenAICompatible {
 		if m.BaseURL == "" {
 			return fmt.Errorf("base_url is required for provider '%s'", m.Provider)
 		}
 		if len(m.Aliases) == 0 {
-			return fmt.Errorf("aliases are required for provider '%s' — define model mappings like: aliases = { gemma4 = \"gemma4\" }", m.Provider)
+			return fmt.Errorf("models are required for provider '%s' — define mappings like: models = { llama_3 = \"llama3:latest\" }", m.Provider)
 		}
 		return nil
 	}

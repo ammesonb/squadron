@@ -69,7 +69,7 @@ squadron quickstart
 # (the first interactive run asks for the URL and runner credential)
 squadron engage
 
-# Add anthropic_api_key from the workspace Settings page in Command Center
+# Add an Anthropic model connection from the workspace Connections page
 ```
 
 Full walkthrough: [Quick Start](https://docs.squadron.sh/getting-started/quickstart).
@@ -84,7 +84,7 @@ Full walkthrough: [Quick Start](https://docs.squadron.sh/getting-started/quickst
 
 **MCP both directions.** Squadron [consumes any MCP server](https://docs.squadron.sh/config/mcp_tools) (npm packages, GitHub release binaries, HTTP, or local stdio) — auto-install handled. Squadron itself can also [run as an MCP server](https://docs.squadron.sh/config/mcp_host) so Claude Desktop, Claude Code, and Cursor can browse your missions and trigger runs.
 
-**Mix model providers per task.** Use Claude Sonnet for orchestration, GPT-4 for the hard subtask, a local Llama for the privacy-sensitive step, Gemini for vision. Declare each `model` block once and reference per agent.
+**Mix model providers per task.** Use Claude Sonnet for orchestration, GPT-4 for the hard subtask, a local Llama for the privacy-sensitive step, Gemini for vision. Configure credentials and endpoints in Command Center, allow the models you intend to use with `model_provider` blocks, and reference them per agent.
 
 **Scheduled, webhook-triggered, budgeted.** Each mission can declare a [`schedule` block](https://docs.squadron.sh/missions/schedules) (cron / daily / interval with timezone + weekday filters), a `trigger` block (webhook), and a [`budget` block](https://docs.squadron.sh/missions/budgets) that halts the run when token or dollar caps are reached.
 

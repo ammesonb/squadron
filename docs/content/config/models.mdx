@@ -1,184 +1,92 @@
 ---
-title: Models
+title: Model providers
 ---
 
-# Models
+# Model providers
 
-Models define connections to LLM providers. Cloud providers (Anthropic, OpenAI, Gemini) have built-in model lists — just add your API key and all supported models are automatically available. Local providers (Ollama) use `aliases` to map HCL-friendly keys to model names.
+Command Center owns model-provider connections: credentials, endpoints, and provider-specific connection settings. Squadron configuration only declares which models a workspace is allowed to use.
 
-## Cloud Providers
+The name of each `model_provider` block must match a model connection on the workspace's **Connections** page.
+
+## Built-in providers
+
+For Anthropic, OpenAI, and Google Gemini, list the Squadron model keys that configuration may reference:
 
 ```hcl
-model "anthropic" {
-  provider = "anthropic"
-  api_key  = vars.anthropic_api_key
+model_provider "anthropic" {
+  models = [
+    "claude_sonnet_4_6",
+    "claude_haiku_4_5",
+  ]
 }
 
-model "openai" {
-  provider = "openai"
-  api_key  = vars.openai_api_key
-}
-
-model "gemini" {
-  provider = "gemini"
-  api_key  = vars.gemini_api_key
+model_provider "openai" {
+  models = ["gpt_5", "gpt_5_mini"]
 }
 ```
 
-All supported models for each provider are available automatically — no need to list them.
-
-### Custom Endpoints
-
-Every provider accepts an optional `base_url` to redirect API calls to a compatible proxy or gateway (LiteLLM, OpenRouter, a corporate gateway, etc.). Leave it unset to use each SDK's default endpoint.
-
-```hcl
-model "anthropic" {
-  provider = "anthropic"
-  api_key  = vars.anthropic_api_key
-  base_url = "https://litellm.internal.example.com"
-}
-```
-
-## Local Models (Ollama)
-
-The `ollama` provider connects to any OpenAI-compatible local inference server. Use `aliases` to define which models are available and map HCL-safe keys to the actual model names.
-
-> **Requires Ollama 0.13.3 or newer** (or any other server that implements `/v1/responses`). Squadron speaks to OpenAI-compatible servers via the Responses API, not the older Chat Completions API. vLLM (recent versions) and LiteLLM also support this.
-
-```hcl
-model "local" {
-  provider = "ollama"
-  base_url = "http://localhost:11434/v1"
-  aliases = {
-    gemma4     = "gemma4"
-    gemma4_26b = "gemma4:26b"
-    nemotron   = "nemotron-cascade-2:30b"
-  }
-}
-```
-
-The alias key (left side) becomes the HCL reference name. The value (right side) is the exact model name sent to the server. This handles models with colons or hyphens that aren't valid in HCL identifiers.
+Use the block name and allowed key when assigning a model:
 
 ```hcl
 agent "researcher" {
-  model = models.local.gemma4_26b   # sends "gemma4:26b" to Ollama
-}
-
-agent "writer" {
-  model = models.local.nemotron     # sends "nemotron-cascade-2:30b" to Ollama
+  model = models.anthropic.claude_sonnet_4_6
 }
 ```
 
-The `base_url` should point to the OpenAI-compatible API endpoint. Common values:
+An unlisted model is unavailable to agents and missions, even when the provider account itself can access it.
 
-| Server | Base URL |
-|--------|----------|
-| Ollama | `http://localhost:11434/v1` |
-| vLLM | `http://localhost:8000/v1` |
-| llama.cpp | `http://localhost:8080/v1` |
-| LM Studio | `http://localhost:1234/v1` |
+## OpenAI-compatible providers
 
-## Attributes
-
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `provider` | string | yes | Provider name: `anthropic`, `openai`, `gemini`, or `ollama` |
-| `api_key` | string | cloud providers | API key (required for `anthropic`, `openai`, `gemini`) |
-| `base_url` | string | no | Override the provider's API endpoint (required for `ollama`; optional for cloud providers to route through a compatible proxy) |
-| `aliases` | map | `ollama` only | Map of HCL key → API model name |
-| `prompt_caching` | bool | no | Enable prompt caching (default: `true`) |
-
-## Supported Models
-
-See the full list of built-in models with pricing for every provider on the **[Supported Models](/config/supported-models)** page.
-
-## Referencing Models
-
-Use `models.<config_name>.<model_key>` to reference a model:
+Ollama, llama.cpp, vLLM, LiteLLM, and similar servers often use model identifiers that are not suitable HCL keys. Define a mapping from a stable configuration key to the exact identifier sent to the server:
 
 ```hcl
-agent "assistant" {
-  model = models.anthropic.claude_sonnet_4
-}
-
-agent "local_researcher" {
-  model = models.local.gemma4_26b
-}
-
-mission "pipeline" {
-  commander {
-    model = models.anthropic.claude_sonnet_4
+model_provider "local" {
+  models = {
+    llama_3_3    = "llama3.3:70b"
+    gemma_4_26b  = "gemma4:26b"
+    company_chat = "registry.internal/models/chat@2026-08"
   }
 }
 ```
 
-## Multiple Configs Per Provider
-
-You can have multiple model configs for the same provider with different API keys:
-
 ```hcl
-model "anthropic_prod" {
-  provider = "anthropic"
-  api_key  = vars.anthropic_prod_key
-}
-
-model "anthropic_dev" {
-  provider = "anthropic"
-  api_key  = vars.anthropic_dev_key
+agent "private_researcher" {
+  model = models.local.llama_3_3
 }
 ```
 
-## Custom Aliases for Cloud Providers
+`llama_3_3` is the durable key used by configuration. `llama3.3:70b` is the provider model name sent on the wire. This indirection lets an operator update the serving endpoint in Command Center without changing HCL, while model-name changes remain explicit and reviewable in configuration.
 
-Cloud providers can also use `aliases` to add custom model name mappings or override the built-in ones:
+## Configure a connection
+
+Open the workspace's **Connections** page in Command Center and add a model connection with the same name as the HCL block. Choose one of:
+
+- Anthropic
+- OpenAI
+- Google Gemini
+- OpenAI-compatible
+
+Command Center encrypts API keys in its database. Connected workers receive credentials in memory and do not persist them. Standard providers use their default endpoint unless a base URL override is set. OpenAI-compatible connections require a base URL and may optionally use an API key.
+
+Changing a connection or its credential pushes a new in-memory snapshot to the connected worker and reloads configuration. Credential reveals are restricted to workspace managers and administrators and are recorded in the audit log.
+
+## Migration from `model` blocks
+
+The previous syntax placed provider credentials and endpoints in HCL:
 
 ```hcl
 model "anthropic" {
   provider = "anthropic"
   api_key  = vars.anthropic_api_key
-  aliases = {
-    sonnet = "claude-sonnet-4-20250514"
-  }
-}
-
-agent "assistant" {
-  model = models.anthropic.sonnet  # custom alias
 }
 ```
 
-## Pricing Overrides
-
-Squadron includes built-in pricing for all supported models to estimate costs per turn. Override with custom pricing using `pricing` blocks:
+Replace it with an allow-list and configure the connection in Command Center:
 
 ```hcl
-model "anthropic" {
-  provider = "anthropic"
-  api_key  = vars.anthropic_api_key
-
-  pricing "claude_sonnet_4_6" {
-    input       = 2.50   # per 1M tokens
-    output      = 12.00
-    cache_read  = 0.25
-    cache_write = 3.00
-  }
+model_provider "anthropic" {
+  models = ["claude_sonnet_4_6"]
 }
 ```
 
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `input` | number | Cost per 1M input tokens (required) |
-| `output` | number | Cost per 1M output tokens (required) |
-| `cache_read` | number | Cost per 1M cached input tokens (optional, default: 0) |
-| `cache_write` | number | Cost per 1M cache write tokens (optional, default: 0) |
-
-The pricing block label must match a model key. Costs are shown with mission-run telemetry in the Squadron product.
-
-### Local Models and Cost Tracking
-
-Local models (Ollama provider) have no built-in pricing since they run on your own hardware. Squadron still tracks **token usage** for every turn, so you can monitor how many tokens your local models consume even though the dollar cost is $0.
-
-## Native Reasoning
-
-Squadron supports native reasoning ("extended thinking" on Anthropic, reasoning summaries on OpenAI Responses, `thinking_config` on Gemini). Agents and commanders enable it via the `reasoning` attribute (`"low"`, `"medium"`, or `"high"`); see [Agents → Reasoning](/config/agents#reasoning).
-
-Capability is read from Squadron's built-in model registry: each model that supports native reasoning is flagged at registration. Claude 4.x, OpenAI o3/o4/gpt-5, and Gemini 2.5+/3.x are flagged today. Setting `reasoning` on an agent or commander whose model isn't flagged is a no-op and logs a warning at startup; the agent runs as if the attribute weren't set. Models that come in through Ollama via user `aliases` aren't in the registry — `reasoning` on those is also a no-op.
+On upgrade, Command Center migrates stored `anthropic_api_key`, `openai_api_key`, and `gemini_api_key` workspace values into matching model connections when one does not already exist.

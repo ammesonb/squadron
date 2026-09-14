@@ -23,18 +23,15 @@ Or grab a binary from [GitHub Releases](https://github.com/mlund01/squadron/rele
 squadron init                 # initialize local runtime state
 ```
 
-After connecting the worker, set `anthropic_api_key` from the workspace Settings page in Command Center.
+After connecting the worker, add an Anthropic model connection from the workspace Connections page in Command Center.
 
 ## Step 2: declare the model and agents
 
 Create `config/models.hcl`:
 
 ```hcl
-variable "anthropic_api_key" { secret = true }
-
-model "anthropic" {
-  provider = "anthropic"
-  api_key  = vars.anthropic_api_key
+model_provider "anthropic" {
+  models = ["claude_sonnet_4_6"]
 }
 ```
 

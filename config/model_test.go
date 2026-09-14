@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"squadron/config"
+	"squadron/config/runtimemodels"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -10,6 +11,38 @@ import (
 var _ = Describe("Model", func() {
 
 	Describe("parsing", func() {
+		It("parses a model_provider allow-list from its Command Center connection", func() {
+			runtimemodels.Replace(map[string]runtimemodels.Connection{"anthropic": {Provider: "anthropic", APIKey: "runtime-key", PromptCaching: true}})
+			DeferCleanup(func() { runtimemodels.Replace(nil) })
+			hcl := `
+model_provider "anthropic" {
+  models = ["claude_haiku_4_5"]
+}
+storage { backend = "sqlite" }
+`
+			_, f := writeFixture("config.hcl", hcl)
+			cfg, err := config.LoadFile(f)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.Models).To(HaveLen(1))
+			Expect(cfg.Models[0].APIKey).To(Equal("runtime-key"))
+			Expect(cfg.Models[0].AvailableModels()).To(Equal(map[string]string{"claude_haiku_4_5": "claude-haiku-4-5-20251001"}))
+		})
+
+		It("parses explicit model mappings for OpenAI-compatible connections", func() {
+			runtimemodels.Replace(map[string]runtimemodels.Connection{"local": {Provider: "openai_compatible", BaseURL: "http://localhost:11434/v1"}})
+			DeferCleanup(func() { runtimemodels.Replace(nil) })
+			hcl := `
+model_provider "local" {
+  models = { llama_3 = "llama3:70b" }
+}
+storage { backend = "sqlite" }
+`
+			_, f := writeFixture("config.hcl", hcl)
+			cfg, err := config.LoadFile(f)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.Models[0].AvailableModels()).To(Equal(map[string]string{"llama_3": "llama3:70b"}))
+		})
+
 		It("parses a model with valid provider and models", func() {
 			hcl := minimalVarsHCL() + `
 model "anthropic" {
@@ -172,13 +205,13 @@ model "bad" {
 			}
 			err := m.Validate()
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("aliases are required"))
+			Expect(err.Error()).To(ContainSubstring("models are required"))
 		})
 
 		It("rejects cloud provider without api_key", func() {
 			m := config.Model{
-				Name:          "openai",
-				Provider:      config.ProviderOpenAI,
+				Name:     "openai",
+				Provider: config.ProviderOpenAI,
 			}
 			err := m.Validate()
 			Expect(err).To(HaveOccurred())
