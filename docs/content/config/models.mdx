@@ -6,7 +6,7 @@ title: Model providers
 
 Command Center owns model-provider connections: credentials, endpoints, and provider-specific connection settings. Squadron configuration only declares which models a workspace is allowed to use.
 
-The name of each `model_provider` block must match a model connection on the workspace's **Connections** page.
+The name of each `model_provider` block must match a model provider on the workspace's **Settings** page.
 
 ## Built-in providers
 
@@ -59,7 +59,7 @@ agent "private_researcher" {
 
 ## Configure a connection
 
-Open the workspace's **Connections** page in Command Center and add a model connection with the same name as the HCL block. Choose one of:
+Open the workspace's **Settings** page in Command Center and add a model provider with the same connection name as the HCL block. A workspace may have multiple connections for the same provider—for example, separate OpenAI accounts or multiple OpenAI-compatible endpoints. Choose one of:
 
 - Anthropic
 - OpenAI

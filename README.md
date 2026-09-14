@@ -69,7 +69,7 @@ squadron quickstart
 # (the first interactive run asks for the URL and runner credential)
 squadron engage
 
-# Add an Anthropic model connection from the workspace Connections page
+# Add an Anthropic model provider from the workspace Settings page
 ```
 
 Full walkthrough: [Quick Start](https://docs.squadron.sh/getting-started/quickstart).
