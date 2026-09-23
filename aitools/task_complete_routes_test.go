@@ -63,7 +63,7 @@ func TestTaskCompleteTypedMissionInputs(t *testing.T) {
 		t.Fatal("false or optional default lost")
 	}
 
-	// Existing callers and persisted history use string-encoded values.
+	// String-encoded values must resolve and replay identically to native JSON values.
 	legacy, _ := json.Marshal(map[string]any{"route": "fix", "summary": "accepted evidence", "mission_inputs": want})
 	legacyTool, _ := routeFixture()
 	if got := response(t, legacyTool.Call(context.Background(), string(legacy))); got["status"] != "ok" {

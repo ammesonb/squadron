@@ -84,7 +84,7 @@ func (t *TaskCompleteTool) ToolPayloadSchema() Schema {
 		if hasMissionInputs {
 			props["mission_inputs"] = Property{
 				Type:        TypeObject,
-				Description: "Input values for the selected mission route, using the input definitions in the routing prompt. Supply JSON strings, booleans, numbers, arrays, or objects matching the declared types. Values may also be string-encoded. Copy actual results; this call completes the task and starts the destination mission.",
+				Description: "Input values for the selected mission route. Use the names and types in the routing prompt; booleans, numbers, arrays, and objects can be supplied directly as JSON values.",
 			}
 		}
 	}

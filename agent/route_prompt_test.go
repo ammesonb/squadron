@@ -17,7 +17,7 @@ func TestRoutePromptIncludesDestinationInputs(t *testing.T) {
 		}},
 	})
 	prompt := strings.Join(commander.session.GetSystemPrompts(), "\n")
-	for _, expected := range []string{"next_task", "fix", "`evidence` (string, required)", "Citations supporting the diagnosis", "`messageable` (bool, optional)", "mission_inputs", "not copied automatically", "not a dry run"} {
+	for _, expected := range []string{"next_task", "fix", "`evidence` (string, required)", "Citations supporting the diagnosis", "`messageable` (bool, optional)", "mission_inputs", "not copied automatically", "starts the destination mission"} {
 		if !strings.Contains(prompt, expected) {
 			t.Errorf("routing prompt missing %q", expected)
 		}

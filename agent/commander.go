@@ -913,7 +913,7 @@ func (s *Commander) injectRouteOptions(routes []aitools.RouteOption) {
 		}
 	}
 	sb.WriteString("- `none` — No route applies, complete without branching\n")
-	sb.WriteString("\nFor a mission route, populate `mission_inputs` from the actual task results and context using the destination's input definitions above. Submitted outputs and the completion summary are not copied automatically. A successful `task_complete` starts the destination mission; it is not a dry run.\n")
+	sb.WriteString("\nFor a mission route, populate `mission_inputs` using the destination's input definitions above. Task outputs and the completion summary are not copied automatically. A successful `task_complete` completes this task and starts the destination mission.\n")
 	s.session.AddSystemPrompt(sb.String())
 }
 
