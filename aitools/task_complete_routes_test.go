@@ -176,3 +176,18 @@ func TestTaskCompleteRejectsNonFiniteEncodedNumbers(t *testing.T) {
 		}
 	}
 }
+
+func TestTaskCompleteAcceptsNativeFileEnvelope(t *testing.T) {
+	input := config.MissionInput{Name: "doc", Type: "file"}
+	tool := &aitools.TaskCompleteTool{Routes: []aitools.RouteOption{{Target: "next", IsMission: true, Inputs: []aitools.RouteInput{{Name: input.Name, Type: input.Type, Required: true, Validate: input.ValidateValue}}}}}
+	got := response(t, tool.Call(context.Background(), `{"route":"next","mission_inputs":{"doc":{"filename":"a.md","content_base64":"aGk="}}}`))
+	if got["status"] != "ok" || tool.MissionInputs()["doc"] != `{"filename":"a.md","content_base64":"aGk="}` {
+		t.Fatal(got, tool.MissionInputs())
+	}
+	for _, value := range []string{`true`, `42`, `["a.md"]`} {
+		retry := &aitools.TaskCompleteTool{Routes: tool.Routes}
+		if got := response(t, retry.Call(context.Background(), `{"route":"next","mission_inputs":{"doc":`+value+`}}`)); got["status"] != "error" {
+			t.Fatal(value, got)
+		}
+	}
+}

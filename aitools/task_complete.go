@@ -322,6 +322,9 @@ func (r RouteOption) prepareInputs(raw map[string]json.RawMessage) (map[string]s
 				valid = kind == '['
 			case "object", "map":
 				valid = kind == '{'
+			case "file":
+				// Base64 upload envelope: {"filename": ..., "content_base64": ...}
+				valid = kind == '{'
 			}
 			if !valid {
 				err = fmt.Errorf("expected %s", input.Type)
