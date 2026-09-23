@@ -84,7 +84,7 @@ func (t *TaskCompleteTool) ToolPayloadSchema() Schema {
 		if hasMissionInputs {
 			props["mission_inputs"] = Property{
 				Type:        TypeObject,
-				Description: "Input values for the selected mission route, using the input definitions in the routing prompt. Supply JSON strings, booleans, numbers, arrays, or objects matching the declared types. Legacy string-encoded values are also accepted. Copy actual results; this call completes the task and starts the destination mission.",
+				Description: "Input values for the selected mission route, using the input definitions in the routing prompt. Supply JSON strings, booleans, numbers, arrays, or objects matching the declared types. Values may also be string-encoded. Copy actual results; this call completes the task and starts the destination mission.",
 			}
 		}
 	}
@@ -307,7 +307,7 @@ func (r RouteOption) prepareInputs(raw map[string]json.RawMessage) (map[string]s
 		if err == nil && input.Required && strings.TrimSpace(text) == "" {
 			err = fmt.Errorf("required value must not be empty")
 		}
-		// Strings remain supported for existing callers. Native JSON must have
+		// String-encoded values use the destination parser. Native JSON must have
 		// the declared shape, even when its text could be parsed as another type.
 		trimmed := bytes.TrimSpace(value)
 		if err == nil && len(trimmed) > 0 && trimmed[0] != '"' {

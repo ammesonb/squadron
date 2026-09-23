@@ -76,7 +76,7 @@ Signal that the task is done. Always include a `summary` of key findings and res
 
 Use `"route": "none"` if no route condition applies.
 
-For **cross-mission routes**, include `mission_inputs` using the destination input definitions in the routing prompt. Supply actual task results; this call starts the destination mission when successful. Values support native JSON types as well as legacy string-encoded values:
+For **cross-mission routes**, include `mission_inputs` using the destination input definitions in the routing prompt. Supply actual task results; this call starts the destination mission when successful. Values accept native JSON types or string-encoded values:
 
 ```json
 {
