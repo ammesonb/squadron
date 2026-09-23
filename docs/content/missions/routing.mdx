@@ -229,7 +229,9 @@ task "handle_complaint" {
 }
 ```
 
-When the commander selects a mission route, it also provides any required inputs for the target mission. The `task_complete` tool presents the target mission's input requirements and the commander fills them in.
+When the commander selects a mission route, it supplies `mission_inputs` using the destination's input names, types, descriptions, and required status shown in its routing prompt. Completed task outputs remain available to the commander, but neither `submit_output` nor the completion summary automatically populates the destination's inputs.
+
+Input values can use their native JSON types, such as `false` for a boolean or `2` for a number. String-encoded values remain supported for existing callers. Omit optional inputs to use their defaults; explicit `null` is rejected. The tool reports missing, unknown, and invalid inputs together before completing the source task, so the commander can correct the payload without starting another mission. A successful call is a real handoff, not a validation-only operation.
 
 A mission can route to itself — this creates a new instance, not a loop. This is useful for retry or restart patterns.
 

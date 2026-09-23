@@ -1677,6 +1677,7 @@ func (r *Runner) routeOptionsForTask(task config.Task) []aitools.RouteOption {
 							Type:        inp.Type,
 							Description: inp.Description,
 							Required:    inp.Default == nil && !inp.Protected,
+							Validate:    inp.ValidateValue,
 						})
 					}
 					break
